@@ -1,0 +1,18 @@
+---
+title: "Papers comentados"
+description: "Leitura crítica de estudos que mudam (ou deveriam mudar) a indicação e o laudo. Cada texto abre com a ficha do estudo e termina no que muda na prática."
+eyebrow: "Série"
+pagina-serie: true
+image: ../assets/og/cartao-papers.png
+listing:
+  contents: "*/index.qmd"
+  sort: "date desc"
+  type: default
+  template: ../_estrutura/listagem.ejs
+  categories: true
+  sort-ui: false
+  filter-ui: false
+  feed: true
+  fields: [title, description, date, categories, reading-time]
+page-layout: full
+---

@@ -1,0 +1,25 @@
+/* CartaoLink 1200 x 627, copiado de project/components/bundle.css do sistema de design. */
+:root { --colimador:#0F2740; --captacao:#F07A2A; --captacao-escura:#B24A0B; --cristal:#EEF2F6; --nevoa:#9FB2C6; --grafite:#4C5E73;
+  --termica-1:#5C1A12; --termica-2:#B8321F; --termica-3:#F07A2A; --termica-4:#F9B54C; --termica-5:#FFD9A0;
+  --font-display:"Bricolage Grotesque","Arial Narrow",system-ui,sans-serif; --font-serif:Newsreader,Georgia,serif; --font-mono:"IBM Plex Mono",ui-monospace,monospace; }
+html, body { margin: 0; }
+.mnp-termica { display: flex; height: 8px; width: 100%; }
+.mnp-termica > i { flex: 1; }
+.mnp-termica > i:nth-child(1) { background: var(--termica-1); }
+.mnp-termica > i:nth-child(2) { background: var(--termica-2); }
+.mnp-termica > i:nth-child(3) { background: var(--termica-3); }
+.mnp-termica > i:nth-child(4) { background: var(--termica-4); }
+.mnp-termica > i:nth-child(5) { background: var(--termica-5); }
+.mnp-card { position: relative; box-sizing: border-box; width: 1200px; height: 627px; overflow: hidden;
+  background: var(--colimador); color: var(--cristal); display: grid; grid-template-columns: 1fr 360px; grid-template-rows: 1fr auto; }
+.mnp-card--claro { background: var(--cristal); color: var(--colimador); }
+.mnp-card__texto { padding: 72px 0 0 80px; display: grid; align-content: start; gap: 28px; }
+.mnp-card__serie { font-family: var(--font-mono); font-weight: 500; font-size: 20px; letter-spacing: .09em; text-transform: uppercase; color: var(--captacao); }
+.mnp-card--claro .mnp-card__serie { color: var(--captacao-escura); }
+.mnp-card__titulo { margin: 0; font-family: var(--font-display); font-weight: 720; font-size: 60px; line-height: 1.02; letter-spacing: -0.02em; text-wrap: balance; font-variation-settings: "opsz" 96; }
+.mnp-card__autor { font-family: var(--font-mono); font-size: 20px; color: var(--nevoa); }
+.mnp-card--claro .mnp-card__autor { color: var(--grafite); }
+.mnp-card__simbolo { align-self: center; justify-self: end; width: 400px; margin-right: -80px; opacity: .95; }
+.mnp-card__base { grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between; padding: 0 80px 28px; font-family: var(--font-mono); font-size: 20px; }
+.mnp-card__base img { height: 48px; }
+.mnp-card .mnp-termica { grid-column: 1 / -1; height: 10px; }

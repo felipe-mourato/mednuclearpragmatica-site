@@ -1,0 +1,18 @@
+<%
+// Cartões da página Cursos. Os dados vêm de cursos/cursos.yml.
+// Atenção: não deixe linhas em branco nem recuo dentro do HTML (o Quarto lê como Markdown).
+%>
+<% if (items.length === 0) { %>
+<p class="mnp-vazio">Nenhum curso aberto no momento.</p>
+<% } else { %>
+<ul class="mnp-cartoes">
+<% for (const item of items) { %>
+<li class="mnp-cartao" <%= metadataAttrs(item) %>>
+<h3 class="mnp-cartao__titulo listing-title"><%= item.title %></h3>
+<% if (item.description) { %><p class="mnp-cartao__texto listing-description"><%= item.description %></p><% } %>
+<dl class="mnp-cartao__dados"><% if (item.publico) { %><div><dt>Para quem</dt><dd><%= item.publico %></dd></div><% } %><% if (item.formato) { %><div><dt>Formato</dt><dd><%= item.formato %></dd></div><% } %></dl>
+<% if (item.endereco) { %><p class="mnp-cartao__acao"><a class="mnp-btn mnp-btn--principal" href="<%- item.endereco %>" rel="noopener">Ver o curso na Hotmart<span class="visually-hidden">: <%= item.title %></span></a></p><% } %>
+</li>
+<% } %>
+</ul>
+<% } %>

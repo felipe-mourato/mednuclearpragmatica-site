@@ -1,0 +1,28 @@
+---
+# =====================================================================
+# NEWSLETTER DESATIVADA: esta página é rascunho e não vai para o ar.
+# Para religar, siga a seção 7 do README.
+# =====================================================================
+draft: true
+title: "Newsletter"
+eyebrow: "Por e-mail"
+description: "Receba por e-mail os textos novos da MedNuclear Pragmática: papers comentados, guias do solicitante, casos clínicos e fundamentos."
+---
+
+Um aviso por e-mail quando sai um texto novo, com o título, a pergunta clínica e o link. Gratuita, e você sai quando quiser.
+
+<!--
+  =====================================================================
+  FORMULÁRIO DA NEWSLETTER (nome e e-mail)
+  =====================================================================
+  O formulário abaixo é montado pelo site. Para ligá-lo ao Buttondown,
+  escreva o seu nome de usuário do Buttondown em _quarto.yml, na linha
+  `buttondown-usuario:`. Enquanto ela estiver vazia, o formulário aparece
+  desativado, com o aviso "As inscrições abrem em breve".
+  =====================================================================
+-->
+
+::: {.formulario-newsletter}
+:::
+
+Seu nome e seu e-mail são usados só para enviar a newsletter e não são repassados a terceiros. O cadastro e o envio são feitos pelo Buttondown. [confirmar]

@@ -1,0 +1,33 @@
+---
+# =====================================================================
+# PÁGINA FERRAMENTAS (rascunho)
+# Fica fora do site publicado enquanto existir a linha `draft: true`.
+# Para ativar: apague `draft: true` e tire o # das linhas de Ferramentas
+# no menu, em _quarto.yml.
+#
+# As ferramentas NÃO moram neste repositório. Cada uma tem repositório
+# próprio e endereço próprio (ex.: dmsa.mednuclearpragmatica.com.br).
+# Aqui entra só o cartão que aponta para ela.
+#
+# Para acrescentar um cartão: abra ferramentas/ferramentas.yml.
+# =====================================================================
+title: "Ferramentas"
+eyebrow: "Pesquisa e ensino"
+description: "Ferramentas de processamento de exames de medicina nuclear, de código aberto, que rodam no seu navegador."
+draft: true
+listing:
+  id: lista-ferramentas
+  contents: ferramentas.yml
+  template: ../_estrutura/cartoes-ferramentas.ejs
+  sort: false
+  fields: [title, description, exame, versao, endereco, validacao]
+---
+
+::: {.mnp-aviso role="note"}
+Ferramentas de pesquisa e ensino. Auxílio ao cálculo; a interpretação é de responsabilidade do médico nuclear. Processamento 100% local: nenhum dado sai do seu computador.
+:::
+
+::: {#lista-ferramentas}
+:::
+
+O código de cada ferramenta é aberto, e cada versão tem a fórmula e a referência de cada cálculo documentadas no próprio repositório. [a revisar]

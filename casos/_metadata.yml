@@ -1,0 +1,8 @@
+# Vale para todos os textos desta pasta (Casos clínicos).
+# Não precisa repetir nada disto no cabeçalho de cada post.
+serie: "Caso clínico"
+serie-plural: "Casos clínicos"
+serie-pasta: "casos"
+author: "Felipe Mourato"
+# Imagem de compartilhamento padrão da série. Um post pode trocar com `image:`.
+image: ../assets/og/cartao-casos.png

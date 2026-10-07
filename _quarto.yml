@@ -1,0 +1,126 @@
+# =====================================================================
+# MedNuclear Pragmática — configuração do site (Quarto)
+# Este arquivo vale para o site inteiro. Para mudar o menu, o rodapé
+# ou o endereço do site, é aqui.
+# =====================================================================
+
+project:
+  type: website
+  output-dir: _site
+  # Arquivos copiados para o site sem passar pelo Quarto.
+  resources:
+    - robots.txt
+    - _headers
+    - assets/**
+
+lang: pt-BR
+date-format: "D MMM YYYY"
+
+# Textos padrão do Quarto que aparecem para o leitor, em português.
+language:
+  listing-page-no-matches: "Primeiro texto em preparação."
+  listing-page-filter: "Filtrar"
+  listing-page-order-by: "Ordenar"
+  listing-page-category-all: "Todas"
+  search-no-results-text: "Nada encontrado"
+  toggle-dark-mode: "Alternar tema claro e escuro"
+
+website:
+  title: "MedNuclear Pragmática"
+  description: "Medicina nuclear com evidência, para quem pede o exame e para quem faz o laudo."
+  site-url: https://mednuclearpragmatica.com.br
+  favicon: assets/favicon/favicon.svg
+  # Imagem de compartilhamento padrão (CartaoLink 1200 × 627).
+  # Cada página pode trocar com `image:` no cabeçalho.
+  image: assets/og/cartao-padrao.png
+  open-graph:
+    locale: pt_BR
+    site-name: "MedNuclear Pragmática"
+    image-width: 1200
+    image-height: 627
+  twitter-card:
+    card-style: summary_large_image
+    image-width: 1200
+    image-height: 627
+  # Rascunhos (draft: true) não entram no site publicado, nem no sitemap.
+  # Para vê-los no seu computador: quarto preview --profile rascunho
+  draft-mode: gone
+  page-navigation: false
+  back-to-top-navigation: false
+  bread-crumbs: false
+  search:
+    location: navbar
+    type: overlay
+  navbar:
+    logo:
+      light: assets/logos/mnp-horizontal.svg
+      dark: assets/logos/mnp-horizontal-negativo.svg
+    logo-alt: "MedNuclear Pragmática, página inicial"
+    title: false
+    collapse-below: lg
+    left:
+      - text: "Papers"
+        href: papers/index.qmd
+      - text: "Guias"
+        href: guias/index.qmd
+      - text: "Casos"
+        href: casos/index.qmd
+      - text: "Fundamentos"
+        href: fundamentos/index.qmd
+      # ---------------------------------------------------------------
+      # SEÇÕES PARA DEPOIS. Para colocar uma delas no menu:
+      #   1. apague o # do início das duas linhas dela, aqui embaixo;
+      #   2. apague a linha `draft: true` no topo da página
+      #      (ferramentas/index.qmd ou cursos/index.qmd).
+      # Mantenha o alinhamento: o "-" fica embaixo do "-" de Fundamentos.
+      # ---------------------------------------------------------------
+      # - text: "Ferramentas"
+      #   href: ferramentas/index.qmd
+      # - text: "Cursos"
+      #   href: cursos/index.qmd
+    right:
+      # NEWSLETTER (desativada). Para religar, veja a seção 7 do README.
+      # - text: "Newsletter"
+      #   href: newsletter.qmd
+      - text: "Sobre"
+        href: sobre.qmd
+  page-footer:
+    left: |
+      MedNuclear Pragmática · por Felipe Mourato<br>
+      Conteúdo educacional. Não substitui avaliação médica.
+    right:
+      - text: "Sobre"
+        href: sobre.qmd
+      # - text: "Newsletter"
+      #   href: newsletter.qmd
+      - text: "Todos os textos"
+        href: todos.qmd
+      - text: "RSS"
+        href: todos.xml
+
+# Newsletter (desativada; a página newsletter.qmd está como rascunho).
+# Quando religar: escreva entre as aspas o seu nome de usuário do Buttondown
+# (o que aparece em buttondown.com/SEU-USUARIO). Vazio = formulário desativado.
+buttondown-usuario: ""
+
+# Referências: estilo Vancouver (NLM/ICMJE). Cada post traz o próprio
+# arquivo `referencias.bib`.
+csl: estilos/vancouver.csl
+link-citations: true
+citations-hover: true
+
+format:
+  html:
+    theme:
+      light: [estilos/mnp.scss, estilos/mnp-claro.scss]
+      dark: [estilos/mnp.scss, estilos/mnp-escuro.scss]
+    respect-user-color-scheme: true
+    toc: false
+    anchor-sections: false
+    smooth-scroll: true
+    reference-location: document
+    include-in-header: _estrutura/cabecalho.html
+    template-partials:
+      - _estrutura/title-block.html
+    filters:
+      - _estrutura/mnp.lua

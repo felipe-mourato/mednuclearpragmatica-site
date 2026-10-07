@@ -1,0 +1,100 @@
+---
+# =====================================================================
+# MODELO: PAPER COMENTADO
+# Como usar: copie a pasta inteira deste modelo para dentro de `papers/`
+# e renomeie, por exemplo `papers/2026-11-psma-recidiva/`.
+# O endereço do texto no site será o nome da pasta.
+# Tudo o que começa com # é comentário e não aparece no site.
+# =====================================================================
+
+# Título: a pergunta clínica ou a decisão em jogo (até ~60 caracteres).
+# Só a primeira letra maiúscula, exceto nomes próprios e siglas.
+title: "Pergunta clínica que o estudo responde?"
+
+# Linha fina: uma frase com o achado principal. Também é o resumo que
+# aparece no Google e quando o link é compartilhado (até ~160 caracteres).
+description: "Uma frase com o que o estudo comparou e o que encontrou."
+
+date: 2026-10-01            # data de publicação (AAAA-MM-DD)
+draft: true                 # apague esta linha quando o texto estiver pronto
+
+# Especialidades: até duas, escolha entre Oncologia, Endocrinologia, Cardiologia.
+categories: [Oncologia]
+
+# revisao: "Nome do revisor"   # tire o # se houver revisor
+# author: ["Felipe Mourato", "Coautor"]   # para coautores; o padrão já é Felipe Mourato
+
+# Imagem de compartilhamento própria (1200 × 627). Sem esta linha, usa o
+# cartão padrão da série.
+# image: cartao.png
+
+bibliography: referencias.bib
+---
+
+<!--
+  FICHA DO ESTUDO
+  Mesmos rótulos, sempre na mesma ordem. Números como no artigo original,
+  conferidos antes de publicar. A ficha traz a sua leitura, não o resumo.
+  Radiofármacos com sobrescrito: ¹⁸F-FDG, ⁶⁸Ga-PSMA-11, ⁹⁹ᵐTc, ¹⁷⁷Lu, ¹³¹I.
+  Atividade em MBq com mCi entre parênteses: 370 MBq (10 mCi). Decimal com vírgula.
+  Em `estudo` vai o nome do estudo; em `fonte`, revista e ano.
+-->
+
+::: {.ficha-estudo estudo="NOME DO ESTUDO" fonte="Revista · ano"}
+Pergunta
+: [a escrever]
+
+Desenho
+: [a escrever]
+
+População
+: [a escrever]
+
+Comparação
+: [a escrever]
+
+Resultado
+: [a escrever]
+
+Limitações
+: [a escrever]
+
+::: {.pratica}
+[a escrever: em uma ou duas frases, o que muda na indicação ou no laudo]
+
+*No SUS*, [a escrever: acesso, fila, incorporação ou custo].
+:::
+:::
+
+## Por que a pergunta importa
+
+[a escrever]
+
+## O que o estudo fez
+
+[a escrever] Cite assim, no fim da frase: [@sobrenome2024].
+
+## O que o estudo encontrou
+
+[a escrever]
+
+## Onde o estudo é forte
+
+[a escrever]
+
+## Onde ele é frágil
+
+[a escrever]
+
+## O que muda na prática
+
+[a escrever]
+
+## E no SUS
+
+[a escrever]
+
+## Referências
+
+::: {#refs}
+:::

@@ -1,0 +1,10 @@
+---
+title: "Página não encontrada"
+eyebrow: "Erro 404"
+description: "O endereço que você abriu não existe ou mudou de lugar."
+search: false
+---
+
+::: {.mnp-404}
+Talvez o texto tenha mudado de endereço. Volte para a [página inicial](/index.html) ou escolha uma série: [Papers comentados](/papers/index.html), [Guias do solicitante](/guias/index.html), [Casos clínicos](/casos/index.html) ou [Fundamentos](/fundamentos/index.html).
+:::

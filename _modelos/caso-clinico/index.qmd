@@ -1,0 +1,65 @@
+---
+# =====================================================================
+# MODELO: CASO CLÍNICO
+# Como usar: copie a pasta inteira deste modelo para dentro de `casos/`
+# e renomeie, por exemplo `casos/2026-11-captacao-incidental/`.
+# Coloque as imagens dentro da mesma pasta (por exemplo, `imagem-1.png`).
+# Tudo o que começa com # é comentário e não aparece no site.
+# =====================================================================
+
+# Título: a pergunta do caso (até ~60 caracteres).
+title: "Qual a sua hipótese para esta captação?"
+description: "[a escrever: o contexto do caso em uma frase, sem dados que identifiquem o paciente]"
+
+date: 2026-10-01
+draft: true                 # apague quando estiver pronto
+categories: [Oncologia]     # Oncologia, Endocrinologia ou Cardiologia (até duas)
+# revisao: "Nome do revisor"
+# image: cartao.png
+
+bibliography: referencias.bib
+---
+
+<!--
+  ANTES DE PUBLICAR QUALQUER IMAGEM (obrigatório):
+  [ ] Sem nome, iniciais, data de nascimento, prontuário, data do exame ou instituição na imagem.
+  [ ] Exportada como PNG ou JPG a partir de uma captura (nunca o arquivo DICOM original),
+      para não levar metadados.
+  [ ] Sem detalhes clínicos raros que permitam reconhecer o paciente.
+  [ ] Uso autorizado conforme as regras do serviço e da LGPD.
+-->
+
+## O caso
+
+[a escrever: idade, sexo, contexto clínico em duas ou três frases, sem dados que identifiquem]
+
+<!--
+  Imagem sobre fundo visor. Em `dados`, o radiofármaco e o protocolo (abaixo, só um exemplo de formato).
+  Troque `imagem-1.png` pelo nome do seu arquivo e escreva o texto alternativo
+  entre colchetes (descreva a imagem para quem usa leitor de tela).
+-->
+
+::: {.imagem-caso dados="¹⁸F-FDG · 370 MBq (10 mCi) · 60 min · PET-CT de corpo inteiro"}
+Imagem anonimizada aqui. Troque esta linha por `![Descrição da imagem](imagem-1.png)`
+:::
+
+## A pergunta
+
+[a escrever: uma pergunta objetiva, de preferência com alternativas]
+
+::: {.desfecho rotulo="Ver a conclusão"}
+[a escrever: a conclusão do caso, com o diagnóstico final e como foi confirmado]
+:::
+
+## Discussão
+
+[a escrever]
+
+## Para levar
+
+[a escrever: dois ou três pontos práticos]
+
+## Referências
+
+::: {#refs}
+:::

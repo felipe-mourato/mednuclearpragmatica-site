@@ -1,0 +1,52 @@
+/*-- scss:defaults --*/
+// Tema claro. As cores vêm de project/tokens.json do sistema de design.
+
+$surface:        #F5F7FA;
+$surface-raised: #FFFFFF;
+$surface-sunken: #E9EEF3;
+$line:           #D3DBE4;
+$line-strong:    #7D8FA4;
+$ink:            #0F2740;
+$ink-muted:      #4C5E73;
+$accent-ink:     #A9470C;
+$accent-soft:    #FDEBDD;
+
+$body-bg: $surface;
+$body-color: $ink;
+$body-secondary-color: $ink-muted;
+$text-muted: $ink-muted;
+$link-color: $accent-ink;
+$primary: $accent-ink;
+$secondary: $ink-muted;
+$border-color: $line;
+$navbar-bg: $surface-raised;
+$navbar-fg: $ink;
+$navbar-hl: $accent-ink;
+$footer-bg: $surface-sunken;
+$footer-fg: $ink-muted;
+$code-color: $accent-ink;
+$code-bg: $surface-sunken;
+$input-bg: $surface-raised;
+$input-border-color: $line-strong;
+$dropdown-bg: $surface-raised;
+$popover-bg: $surface-raised;
+$tooltip-bg: $ink;
+$tooltip-color: $surface;
+
+/*-- scss:rules --*/
+:root {
+  --surface: #{$surface};
+  --surface-raised: #{$surface-raised};
+  --surface-sunken: #{$surface-sunken};
+  --line: #{$line};
+  --line-strong: #{$line-strong};
+  --ink: #{$ink};
+  --ink-muted: #{$ink-muted};
+  --accent-ink: #{$accent-ink};
+  --accent-soft: #{$accent-soft};
+  --colimador-bloco: #0F2740;
+  --esp-onco: #{$accent-ink};
+  --esp-endo: #1C7C7A;
+  --esp-cardio: #C23B3B;
+  color-scheme: light;
+}

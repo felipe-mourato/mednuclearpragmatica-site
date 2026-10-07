@@ -1,0 +1,6 @@
+# Perfil "rascunho": renderiza o site mostrando os rascunhos (draft: true).
+# Uso: quarto render --profile rascunho
+# Serve para revisar textos ainda não publicados numa cópia local.
+# Não use este perfil no build do Cloudflare.
+website:
+  draft-mode: visible

@@ -1,0 +1,8 @@
+# Vale para todos os textos desta pasta (Guias do solicitante).
+# Não precisa repetir nada disto no cabeçalho de cada post.
+serie: "Guia do solicitante"
+serie-plural: "Guias do solicitante"
+serie-pasta: "guias"
+author: "Felipe Mourato"
+# Imagem de compartilhamento padrão da série. Um post pode trocar com `image:`.
+image: ../assets/og/cartao-guias.png

@@ -1,0 +1,8 @@
+# Vale para todos os textos desta pasta (Fundamentos).
+# Não precisa repetir nada disto no cabeçalho de cada post.
+serie: "Fundamentos"
+serie-plural: "Fundamentos"
+serie-pasta: "fundamentos"
+author: "Felipe Mourato"
+# Imagem de compartilhamento padrão da série. Um post pode trocar com `image:`.
+image: ../assets/og/cartao-fundamentos.png

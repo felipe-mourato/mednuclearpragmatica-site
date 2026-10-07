@@ -1,0 +1,31 @@
+# Site gerado (o Cloudflare gera de novo a cada publicação)
+/_site/
+/.quarto/
+/.quarto-bin/
+*_files/
+*.quarto_ipynb
+_freeze/
+
+# Temporários
+/_estrutura/cartoes/_temp.html
+__pycache__/
+*.pyc
+.Rproj.user/
+.Rhistory
+.ipynb_checkpoints/
+
+# Sistema
+.DS_Store
+Thumbs.db
+desktop.ini
+*~
+*.swp
+.vscode/
+.idea/
+
+# Imagens médicas originais: nunca no repositório
+*.dcm
+*.DCM
+dicom/
+
+**/*.quarto_ipynb

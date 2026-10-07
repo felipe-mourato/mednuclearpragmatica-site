@@ -1,0 +1,21 @@
+<%
+// Listagem compacta da página inicial: últimos textos de cada série.
+// Cada item: etiquetas de especialidade, título, linha fina, data e tempo de leitura.
+// Atenção: não deixe linhas em branco nem recuo dentro do HTML (o Quarto lê como Markdown).
+const classe = (nome) => ({ oncologia: "onco", endocrinologia: "endo", cardiologia: "cardio" })[String(nome).toLowerCase()] || "neutra";
+const minutos = (t) => { const n = parseInt(String(t), 10); return isNaN(n) ? "" : n + " min de leitura"; };
+%>
+<% if (items.length === 0) { %>
+<p class="mnp-vazio">Primeiro texto em preparação.</p>
+<% } else { %>
+<ol class="mnp-lista">
+<% for (const item of items) { %>
+<li class="mnp-item" <%= metadataAttrs(item) %>><div class="mnp-item__corpo">
+<% if (item.categories && item.categories.length) { %><div class="mnp-item__meta"><% for (const c of item.categories) { %><span class="mnp-tag mnp-tag--<%= classe(c) %>"><%= c %></span><% } %></div><% } %>
+<h3 class="mnp-item__titulo listing-title"><a class="mnp-item__link" href="<%- item.path %>"><%= item.title %></a></h3>
+<% if (item.description) { %><p class="mnp-item__fina listing-description"><%= item.description %></p><% } %>
+<p class="mnp-item__autoria"><% if (item.date) { %><span class="listing-date"><%= item.date %></span><% } %><% if (item['reading-time']) { %> · <span class="listing-reading-time"><%= minutos(item['reading-time']) %></span><% } %></p>
+</div></li>
+<% } %>
+</ol>
+<% } %>

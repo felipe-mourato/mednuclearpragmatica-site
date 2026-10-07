@@ -1,0 +1,103 @@
+---
+title: "MedNuclear Pragmática"
+pagetitle: "Medicina nuclear com evidência"
+description: "Medicina nuclear com evidência, para quem pede o exame e para quem faz o laudo."
+sem-cabecalho: true
+# A chamada da newsletter, no fim deste arquivo, está desativada pela palavra
+# .content-hidden. Para religar, apague " .content-hidden" (seção 7 do README).
+body-classes: mnp-inicio
+page-layout: full
+listing:
+  - id: ultimos-papers
+    contents: "papers/*/index.qmd"
+    sort: "date desc"
+    max-items: 2
+    template: _estrutura/listagem-inicio.ejs
+    fields: [title, description, date, categories, reading-time]
+  - id: ultimos-guias
+    contents: "guias/*/index.qmd"
+    sort: "date desc"
+    max-items: 2
+    template: _estrutura/listagem-inicio.ejs
+    fields: [title, description, date, categories, reading-time]
+  - id: ultimos-casos
+    contents: "casos/*/index.qmd"
+    sort: "date desc"
+    max-items: 2
+    template: _estrutura/listagem-inicio.ejs
+    fields: [title, description, date, categories, reading-time]
+  - id: ultimos-fundamentos
+    contents: "fundamentos/*/index.qmd"
+    sort: "date desc"
+    max-items: 2
+    template: _estrutura/listagem-inicio.ejs
+    fields: [title, description, date, categories, reading-time]
+---
+
+```{=html}
+<section class="mnp-hero" aria-labelledby="mnp-frase">
+  <img class="mnp-hero__logo mnp-so-claro" src="assets/logos/mnp-horizontal.svg" alt="MedNuclear Pragmática" width="512" height="148">
+  <img class="mnp-hero__logo mnp-so-escuro" src="assets/logos/mnp-horizontal-negativo.svg" alt="MedNuclear Pragmática" width="512" height="148">
+  <h1 id="mnp-frase" class="mnp-hero__frase">Medicina nuclear com evidência, para quem pede o exame e para quem faz o laudo.</h1>
+  <div class="mnp-termica mnp-hero__fio" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
+  <p class="mnp-hero__apoio">Leitura crítica de estudos, guias para o solicitante, casos e fundamentos, escritos para estudantes, residentes e médicos que pedem PET-CT e cintilografia.</p>
+</section>
+```
+
+::: {.mnp-series}
+
+::: {.mnp-serie}
+## []{.mnp-serie__selo .mnp-serie__selo--papers aria-hidden="true"}[Papers comentados](papers/index.qmd)
+
+[Leitura crítica de estudos, da ficha do estudo ao que muda na prática.]{.mnp-serie__desc}
+
+::: {#ultimos-papers}
+:::
+
+[Ver todos os papers comentados](papers/index.qmd){.mnp-serie__mais}
+:::
+
+::: {.mnp-serie}
+## []{.mnp-serie__selo .mnp-serie__selo--guias aria-hidden="true"}[Guias do solicitante](guias/index.qmd)
+
+[Quando pedir, qual traçador, preparo, como ler o laudo e armadilhas.]{.mnp-serie__desc}
+
+::: {#ultimos-guias}
+:::
+
+[Ver todos os guias do solicitante](guias/index.qmd){.mnp-serie__mais}
+:::
+
+::: {.mnp-serie}
+## []{.mnp-serie__selo .mnp-serie__selo--casos aria-hidden="true"}[Casos clínicos](casos/index.qmd)
+
+[Imagens de medicina nuclear, uma pergunta e a conclusão.]{.mnp-serie__desc}
+
+::: {#ultimos-casos}
+:::
+
+[Ver todos os casos clínicos](casos/index.qmd){.mnp-serie__mais}
+:::
+
+::: {.mnp-serie}
+## []{.mnp-serie__selo .mnp-serie__selo--fundamentos aria-hidden="true"}[Fundamentos](fundamentos/index.qmd)
+
+[Física, radiofarmácia, radioproteção e quantificação.]{.mnp-serie__desc}
+
+::: {#ultimos-fundamentos}
+:::
+
+[Ver todos os fundamentos](fundamentos/index.qmd){.mnp-serie__mais}
+:::
+
+:::
+
+::: {.mnp-chamada .content-hidden}
+::: {}
+## Os textos novos no seu e-mail
+
+Gratuita. Você recebe um aviso quando sai um paper comentado, um guia, um caso ou um fundamento.
+:::
+
+[Receber a newsletter](newsletter.qmd){.mnp-btn .mnp-btn--principal}
+:::

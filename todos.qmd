@@ -1,0 +1,26 @@
+---
+title: "Todos os textos"
+eyebrow: "Arquivo"
+description: "Todos os textos da MedNuclear Pragmática, do mais recente ao mais antigo: papers comentados, guias do solicitante, casos clínicos e fundamentos."
+pagina-serie: true
+# Esta página gera o feed RSS único do site (todos.xml), com os textos de
+# todas as séries: https://mednuclearpragmatica.com.br/todos.xml
+# Se a newsletter for religada, é esse o endereço que o Buttondown usa para
+# mandar os e-mails automaticamente.
+listing:
+  contents:
+    - "papers/*/index.qmd"
+    - "guias/*/index.qmd"
+    - "casos/*/index.qmd"
+    - "fundamentos/*/index.qmd"
+  sort: "date desc"
+  template: _estrutura/listagem-inicio.ejs
+  categories: true
+  sort-ui: false
+  filter-ui: false
+  feed:
+    title: "MedNuclear Pragmática"
+    items: 20
+  fields: [title, description, date, categories, reading-time]
+page-layout: full
+---

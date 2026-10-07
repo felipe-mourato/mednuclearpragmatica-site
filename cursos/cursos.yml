@@ -1,0 +1,31 @@
+# =====================================================================
+# CARTÕES DA PÁGINA CURSOS
+#
+# Cada curso é um bloco que começa com "- title:".
+# Para acrescentar um:
+#   1. copie o bloco de exemplo abaixo e cole no fim do arquivo;
+#   2. apague o "# " do começo de cada linha do bloco copiado;
+#   3. preencha os campos, sempre entre aspas;
+#   4. apague a linha "[]" do fim do arquivo (ela só existe enquanto a
+#      lista está vazia).
+#
+# Campos:
+#   title        nome do curso
+#   description  o que a pessoa aprende, em uma ou duas frases
+#   publico      para quem é
+#   formato      carga horária e formato (gravado, ao vivo, com certificado)
+#   endereco     link da página de venda na Hotmart
+#
+# A ordem dos cartões na página é a ordem deste arquivo.
+# Atenção ao alinhamento: as linhas de cada bloco começam com dois espaços.
+# =====================================================================
+
+# EXEMPLO (comentado, não aparece no site):
+#
+# - title: "PET-CT oncológico para o solicitante"
+#   description: "Quando pedir, como preparar o paciente e como ler o laudo de ¹⁸F-FDG e ⁶⁸Ga-PSMA-11."
+#   publico: "Oncologistas, residentes e estudantes"
+#   formato: "8 h · aulas gravadas · certificado"
+#   endereco: "https://hotmart.com/pt-br/marketplace/produtos/exemplo"
+
+[]

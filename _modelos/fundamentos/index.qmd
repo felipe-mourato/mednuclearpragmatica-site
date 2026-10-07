@@ -1,0 +1,48 @@
+---
+# =====================================================================
+# MODELO: FUNDAMENTOS
+# Como usar: copie a pasta inteira deste modelo para dentro de `fundamentos/`
+# e renomeie, por exemplo `fundamentos/suv-o-que-mede/`.
+# Tudo o que começa com # é comentário e não aparece no site.
+# =====================================================================
+
+# Título: a pergunta que o conceito responde (até ~60 caracteres).
+title: "O que o SUV mede, e o que ele não mede?"
+description: "Uma frase com a ideia central do conceito e por que ela importa no laudo."
+
+date: 2026-10-01
+draft: true                 # apague quando estiver pronto
+# Fundamentos nem sempre têm especialidade; se tiver, use até duas.
+# categories: [Oncologia]
+# revisao: "Nome do revisor"
+# image: cartao.png
+
+bibliography: referencias.bib
+---
+
+<!--
+  Física, radiofarmácia, radioproteção, quantificação. Explique do zero, mas sem
+  simplificar a ponto de errar. Unidades: MBq com mCi entre parênteses, decimal
+  com vírgula. Fórmulas podem ser escritas entre cifrões: $SUV = \frac{C}{A/m}$.
+-->
+
+## A ideia em uma frase
+
+[a escrever]
+
+## Como funciona
+
+[a escrever]
+
+## Por que importa no laudo
+
+[a escrever]
+
+## Erros comuns
+
+[a escrever]
+
+## Referências
+
+::: {#refs}
+:::

@@ -1,0 +1,41 @@
+---
+title: "Sobre"
+eyebrow: "O projeto"
+description: "Quem edita a MedNuclear Pragmática, como o conteúdo é feito, conflitos de interesse e tratamento de imagens."
+---
+
+MedNuclear Pragmática é um projeto de educação e divulgação científica em medicina nuclear. Escrevemos para estudantes de medicina, residentes de medicina nuclear e médicos que pedem os exames, sobretudo oncologistas, endocrinologistas e cardiologistas.
+
+## Editor
+
+<!-- [a revisar] Confira e complete: instituição, titulação e, se quiser, links (Lattes, ORCID). -->
+
+O projeto é editado por Felipe Mourato, médico nuclear e doutor (PhD), com mais de 50 artigos publicados, boa parte deles revisões sistemáticas e meta-análises. Trabalha principalmente no Sistema Único de Saúde. [a revisar]
+
+CRM [a preencher] · RQE [a preencher]
+
+## Política editorial
+
+Os textos do site são gratuitos e independentes de qualquer produto, serviço ou empresa. O projeto é educacional e não anuncia consultas, exames nem serviços médicos. Cursos pagos, se houver, ficam à parte e não influenciam a escolha dos temas nem as conclusões dos textos. [a revisar]
+
+Os temas são escolhidos pela pergunta clínica, não pelo produto. Cada número citado tem fonte e é conferido no artigo original antes da publicação. Os artigos são parafraseados, não copiados.
+
+Quem escreve ou revisa cada texto aparece na linha de autoria, abaixo do título.
+
+Erros são corrigidos no próprio texto, com a data da correção indicada no topo. [confirmar]
+
+## Conflitos de interesse
+
+[a preencher] Declare aqui vínculos com indústria farmacêutica, de radiofármacos ou de equipamentos, consultorias, palestras pagas e participação em sociedades ou comitês que possam ser vistos como conflito. Se não houver, escreva isso de forma explícita e date a declaração.
+
+## Imagens médicas
+
+Publicamos apenas imagens anonimizadas. Nome, data de nascimento, número de prontuário, data do exame e instituição são removidos da imagem e dos metadados DICOM antes de qualquer uso. Não usamos fotografias de pacientes nem de bancos de imagem.
+
+## Aviso
+
+O conteúdo deste site é educacional. Ele não substitui a avaliação médica de cada paciente, nem as diretrizes e protocolos do serviço onde você trabalha.
+
+## Contato
+
+[a definir]

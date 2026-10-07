@@ -1,0 +1,34 @@
+# =====================================================================
+# CARTÕES DA PÁGINA FERRAMENTAS
+#
+# Cada ferramenta é um bloco que começa com "- title:".
+# Para acrescentar uma:
+#   1. copie o bloco de exemplo abaixo e cole no fim do arquivo;
+#   2. apague o "# " do começo de cada linha do bloco copiado;
+#   3. preencha os campos, sempre entre aspas;
+#   4. apague a linha "[]" do fim do arquivo (ela só existe enquanto a
+#      lista está vazia).
+#
+# Campos:
+#   title        nome da ferramenta
+#   exame        exame e radiofármaco, com sobrescrito (⁹⁹ᵐTc-DMSA)
+#   description  o que ela calcula, em uma ou duas frases
+#   versao       versão publicada (a mesma que aparece no laudo da ferramenta)
+#   endereco     endereço da ferramenta (subdomínio)
+#   validacao    link (de preferência o DOI) do artigo de validação.
+#                Se ainda não houver, apague a linha inteira.
+#
+# A ordem dos cartões na página é a ordem deste arquivo.
+# Atenção ao alinhamento: as linhas de cada bloco começam com dois espaços.
+# =====================================================================
+
+# EXEMPLO (comentado, não aparece no site):
+#
+# - title: "Cintilografia renal com DMSA"
+#   exame: "⁹⁹ᵐTc-DMSA"
+#   description: "Função renal relativa a partir das ROIs renais e de fundo nas projeções anterior e posterior, com média geométrica."
+#   versao: "0.1.0"
+#   endereco: "https://dmsa.mednuclearpragmatica.com.br"
+#   validacao: "https://doi.org/10.0000/exemplo"
+
+[]

@@ -1,0 +1,18 @@
+---
+title: "Fundamentos"
+description: "Física, radiofarmácia, radioproteção e quantificação, explicadas do jeito que fazem diferença no laudo."
+eyebrow: "Série"
+pagina-serie: true
+image: ../assets/og/cartao-fundamentos.png
+listing:
+  contents: "*/index.qmd"
+  sort: "date desc"
+  type: default
+  template: ../_estrutura/listagem.ejs
+  categories: true
+  sort-ui: false
+  filter-ui: false
+  feed: true
+  fields: [title, description, date, categories, reading-time]
+page-layout: full
+---

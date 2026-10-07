@@ -1,0 +1,45 @@
+<!--
+  Cabeçalho de página (componente CabecalhoArtigo do sistema de design).
+  Variáveis usadas, todas vindas do cabeçalho YAML de cada página ou do
+  _metadata.yml da pasta da série:
+    serie, serie-pasta      etiqueta preenchida e link da série
+    etiquetas               geradas pelo filtro a partir de `categories`
+    title, description      título e linha fina
+    author, revisao, date   linha de autoria
+    tempo-leitura           calculado pelo filtro
+    pagina-serie, eyebrow   cabeçalho das páginas de listagem
+    sem-cabecalho           esconde o cabeçalho (página inicial)
+-->
+$if(sem-cabecalho)$
+$elseif(title)$
+<header id="title-block-header" class="quarto-title-block mnp-cabecalho$if(pagina-serie)$ mnp-cabecalho--serie$endif$">
+$if(pagina-serie)$
+$if(eyebrow)$<p class="mnp-eyebrow">$eyebrow$</p>$endif$
+$elseif(serie)$
+<div class="mnp-tags">
+<a class="mnp-tag mnp-tag--serie" href="../index.html">$serie$</a>
+$for(etiquetas)$<a class="mnp-tag mnp-tag--$etiquetas.classe$" href="../index.html#category=$etiquetas.ancora$">$etiquetas.nome$</a>
+$endfor$
+$if(draft)$<span class="mnp-tag mnp-tag--rascunho">Rascunho</span>$endif$
+</div>
+$elseif(eyebrow)$
+<p class="mnp-eyebrow">$eyebrow$</p>
+$endif$
+<h1 class="title mnp-titulo">$title$</h1>
+$if(subtitle)$
+<p class="subtitle mnp-fina">$subtitle$</p>
+$elseif(description)$
+<p class="subtitle mnp-fina">$description$</p>
+$endif$
+$if(pagina-serie)$
+$elseif(serie)$
+<div class="mnp-autoria">
+$if(by-author)$<span>Por $for(by-author)$<b>$it.name.literal$</b>$sep$, $endfor$</span>$endif$
+$if(revisao)$<span>Revisão: <b>$revisao$</b></span>$endif$
+$if(date)$<span><time>$date$</time></span>$endif$
+$if(date-modified)$<span>Atualizado em $date-modified$</span>$endif$
+$if(tempo-leitura)$<span>$tempo-leitura$</span>$endif$
+</div>
+$endif$
+</header>
+$endif$

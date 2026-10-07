@@ -1,0 +1,61 @@
+---
+# =====================================================================
+# MODELO: GUIA DO SOLICITANTE
+# Como usar: copie a pasta inteira deste modelo para dentro de `guias/`
+# e renomeie, por exemplo `guias/pet-ct-fdg-linfoma/`.
+# Tudo o que começa com # é comentário e não aparece no site.
+# =====================================================================
+
+# Título: a decisão de quem pede (até ~60 caracteres).
+# Exemplo de forma: "PET-CT com ¹⁸F-FDG no linfoma: quando pedir"
+title: "Exame X na situação Y: quando pedir"
+
+# Linha fina e resumo para Google e redes (até ~160 caracteres).
+description: "Para quem pede o exame: indicação, traçador, preparo, leitura do laudo e armadilhas."
+
+date: 2026-10-01
+draft: true                 # apague quando estiver pronto
+categories: [Oncologia]     # Oncologia, Endocrinologia ou Cardiologia (até duas)
+# revisao: "Nome do revisor"
+# image: cartao.png
+
+bibliography: referencias.bib
+---
+
+<!--
+  Escreva para o colega que pede o exame. Segunda pessoa, frases curtas:
+  "peça o PSMA quando...". Toda recomendação com fonte (diretriz ou estudo).
+-->
+
+## Quando pedir
+
+[a escrever: indicações com melhor evidência, em frases curtas]
+
+## Quando não pedir
+
+[a escrever: situações em que o exame não muda conduta ou atrapalha]
+
+## Qual traçador
+
+[a escrever: traçador indicado e alternativas, por exemplo ¹⁸F-FDG × ⁶⁸Ga-DOTATATE]
+
+## Preparo do paciente
+
+[a escrever: jejum, glicemia, suspensão de medicamentos, tempo de exame. Atividade em MBq com mCi entre parênteses]
+
+## Como ler o laudo
+
+[a escrever: o que procurar no laudo, SUV e critérios de resposta quando couber]
+
+## Armadilhas
+
+[a escrever: falsos positivos e negativos mais comuns]
+
+## E no SUS
+
+[a escrever: disponibilidade, fila, incorporação, como pedir]
+
+## Referências
+
+::: {#refs}
+:::

@@ -1,0 +1,29 @@
+---
+# =====================================================================
+# PÁGINA CURSOS (rascunho)
+# Fica fora do site publicado enquanto existir a linha `draft: true`.
+# Para ativar: apague `draft: true` e tire o # das linhas de Cursos
+# no menu, em _quarto.yml.
+#
+# Para acrescentar um cartão de curso: abra cursos/cursos.yml.
+# =====================================================================
+title: "Cursos"
+eyebrow: "Formação"
+description: "Cursos de medicina nuclear da MedNuclear Pragmática, para estudantes, residentes e médicos solicitantes."
+draft: true
+listing:
+  id: lista-cursos
+  contents: cursos.yml
+  template: ../_estrutura/cartoes-cursos.ejs
+  sort: false
+  fields: [title, description, publico, formato, endereco]
+---
+
+[a escrever] Uma ou duas frases sobre o que os cursos oferecem além dos textos gratuitos do site.
+
+::: {#lista-cursos}
+:::
+
+::: {.mnp-aviso role="note"}
+Os cursos são pagos e vendidos pela Hotmart. Os textos do site continuam gratuitos e não dependem deles. [a revisar]
+:::
