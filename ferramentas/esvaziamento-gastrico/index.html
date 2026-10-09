@@ -102,7 +102,7 @@
       <div class="acoes">
         <button type="button" class="mnp-btn" data-ir="0">Voltar</button>
         <p class="validacao" data-validacao="1"></p>
-        <button type="button" class="mnp-btn mnp-btn--principal" data-ir="2">Traçar o eixo longitudinal</button>
+        <button type="button" class="mnp-btn mnp-btn--principal" data-ir="2">Ver eixo e divisão</button>
       </div>
     </section>
 
@@ -110,13 +110,14 @@
     <section class="passo" data-painel="2" aria-labelledby="t-passo-3" hidden>
       <h2 id="t-passo-3">Eixo longitudinal e divisão proximal/distal</h2>
       <div class="instrucoes">
-        <p>Na imagem <strong>anterior</strong>, trace com o mouse a linha média do estômago, do <strong>topo do fundo</strong> (use o T0) até o <strong>estômago distal</strong> (confira nas imagens de 2 a 4 h). O primeiro eixo vale para todos os tempos; trace de novo num tempo para ajustar só ele.</p>
-        <p>O eixo é dividido ao meio do comprimento, e o corte perpendicular nesse ponto separa a metade <span class="chave chave-prox">proximal</span> da <span class="chave chave-dist">distal</span>. A contagem distal é o total menos a proximal (Silver et al., 2022).</p>
-        <p class="nota">Na posterior, o eixo é espelhado como a ROI. Cada pixel da ROI vai para a metade do ponto do eixo mais próximo dele: perto do meio, é exatamente o corte perpendicular; num estômago em J, o corte não atravessa o antro.</p>
+        <p>O eixo longitudinal é traçado <strong>automaticamente</strong> pela linha média da ROI, do <strong>topo do fundo</strong> até a <strong>extremidade distal</strong>. O eixo é dividido ao meio do comprimento, e o corte perpendicular nesse ponto separa a metade <span class="chave chave-prox">proximal</span> da <span class="chave chave-dist">distal</span>. A contagem distal é o total menos a proximal (Silver et al., 2022).</p>
+        <p>Confira cada tempo. Se discordar do eixo, trace outro à mão na imagem anterior, do topo do fundo ao estômago distal: a correção vale só para aquele tempo.</p>
+        <p class="nota">O eixo automático depende só do contorno da ROI: desenhe a ROI acompanhando o estômago. Ele liga as duas extremidades da ROI mais distantes entre si, por dentro dela, pelo caminho mais afastado das bordas. Na posterior, ROI e eixo são espelhados.</p>
       </div>
       <div data-segmentacao class="grade-tempos"></div>
       <div class="acoes">
         <button type="button" class="mnp-btn" data-ir="1">Voltar à ROI</button>
+        <button type="button" class="mnp-btn" data-acao="eixos-automaticos" hidden>Voltar todos ao automático</button>
         <p class="validacao" data-validacao="2"></p>
         <button type="button" class="mnp-btn mnp-btn--principal" data-ir="3">Calcular</button>
       </div>

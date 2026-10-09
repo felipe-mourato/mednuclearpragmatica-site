@@ -8,10 +8,11 @@ Muda números em relação à 0.1.0: proximal, distal e as retenções regionais
 
 ### Alterado
 
-- **Divisão proximal/distal pelo eixo longitudinal** (Silver et al., Neurogastroenterol Motil 2022, que segue Orthey et al., J Nucl Med 2018). O usuário traça o eixo pela linha média do estômago, do topo do fundo até o estômago distal; o comprimento é dividido ao meio e o corte perpendicular nesse ponto separa as metades. Cada pixel da ROI vai para a metade do ponto do eixo mais próximo dele (no artigo, a ROI proximal é desenhada à mão a partir do corte). Substitui a divisão por componentes principais em metades de mesma área da 0.1.0.
+- **Divisão proximal/distal pelo eixo longitudinal** (Silver et al., Neurogastroenterol Motil 2022, que segue Orthey et al., J Nucl Med 2018). O comprimento do eixo é dividido ao meio e o corte perpendicular nesse ponto separa as metades. Cada pixel da ROI vai para a metade do ponto do eixo mais próximo dele (no artigo, a ROI proximal é desenhada à mão a partir do corte). Substitui a divisão por componentes principais em metades de mesma área da 0.1.0.
+- **Eixo longitudinal automático** (no artigo, é traçado à mão): linha média geodésica da ROI. As extremidades são os dois pixels da ROI mais distantes entre si por dentro dela (topo do fundo e extremidade distal); o caminho entre elas tem custo por passo proporcional a 1/d², em que d é a distância à borda da ROI, e por isso segue o meio do estômago; as pontas que desviam para os cantos são aparadas e prolongadas em linha reta até a borda. Depende só do contorno da ROI, sem limiar de contagem. O usuário pode corrigir o eixo à mão em qualquer tempo e voltar ao automático.
 - **Contagem distal = total − proximal**, em média geométrica, como no artigo. Proximal + distal = total em todas as linhas.
-- O eixo é espelhado na posterior, como a ROI, e acompanha a ROI quando ela é arrastada. O primeiro eixo traçado vale para todos os tempos.
-- Protocolo de reprodução no formato 2 (com o eixo). Protocolos da 0.1.0 são recusados com mensagem clara.
+- O eixo é espelhado na posterior, como a ROI, e acompanha a ROI quando ela é arrastada. Redesenhar a ROI de um tempo descarta a correção manual do eixo daquele tempo.
+- Protocolo de reprodução no formato 2, com o eixo usado em cada tempo e a origem (automático ou manual); o lote usa exatamente esse eixo, mesmo que o algoritmo automático mude em versões futuras. Protocolos da 0.1.0 são recusados com mensagem clara.
 
 ### Incluído
 

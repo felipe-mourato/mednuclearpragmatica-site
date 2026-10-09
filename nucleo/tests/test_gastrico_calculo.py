@@ -11,6 +11,7 @@ from mnp_nucleo.gastrico.calculo import (
 )
 from mnp_nucleo.gastrico.segmentacao import (
     comprimento_trajeto,
+    eixo_automatico,
     orientar_eixo,
     ponto_na_fracao,
     preparar_eixo,
@@ -104,6 +105,74 @@ def test_erros_de_eixo():
         segmentar_por_eixo(m, [(15, 4), (15, 5)])
     with pytest.raises(ValueError):
         segmentar_por_eixo(np.zeros((30, 30), bool), [(15, 4), (15, 24)])
+
+
+# ------------------------------------------------------- eixo automático
+def _estomago(n=128):
+    """Forma de estômago: fundo arredondado e corpo/antro curvo afinando para a esquerda e para baixo."""
+    import math
+
+    yy, xx = np.mgrid[0:n, 0:n] + 0.5
+    m = (xx - 78) ** 2 / 16**2 + (yy - 34) ** 2 / 18**2 <= 1
+    for t in np.linspace(0, 1, 400):
+        cx, cy = 78 - 50 * t**1.3, 40 + 52 * math.sin(t * math.pi / 2)
+        m |= (xx - cx) ** 2 + (yy - cy) ** 2 <= (13 - 6 * t) ** 2
+    return m
+
+
+def test_eixo_automatico_retangulo_divide_ao_meio():
+    m = mascara_roi(RET, 30, 30)
+    s = segmentar_por_eixo(m, eixo_automatico(m))
+    assert s.proximal.sum() == s.distal.sum() == 100
+    assert s.proximal[4:14, 10:20].all()
+
+
+def test_eixo_automatico_elipse_centrado():
+    yy, xx = np.mgrid[0:128, 0:128] + 0.5
+    m = (xx - 64) ** 2 / 30**2 + (yy - 64) ** 2 / 45**2 <= 1
+    e = eixo_automatico(m)
+    s = segmentar_por_eixo(m, e)
+    assert s.meio == pytest.approx((64, 64), abs=1.5)
+    assert e[0][1] < 22 and e[-1][1] > 106  # vai de ponta a ponta do eixo maior
+    assert abs(int(s.proximal.sum()) - int(s.distal.sum())) <= 0.03 * m.sum()
+
+
+def test_eixo_automatico_estomago_do_fundo_ao_antro():
+    m = _estomago()
+    e = eixo_automatico(m)
+    s = segmentar_por_eixo(m, e)
+    assert e[0][1] < 20 and abs(e[0][0] - 78) < 6  # topo do fundo
+    assert e[-1][0] < 35 and e[-1][1] > 85  # extremidade distal
+    fundo = m[16:30, 70:86]
+    assert s.proximal[16:30, 70:86][fundo].all()  # fundo todo proximal
+    assert not s.proximal[85:, :40].any()  # antro todo distal
+    xs = np.array([p[0] for p in e])
+    ys = np.array([p[1] for p in e])
+    assert m[np.floor(ys).astype(int).clip(0, 127), np.floor(xs).astype(int).clip(0, 127)].all()  # eixo dentro da ROI
+
+
+def test_eixo_automatico_em_j():
+    corpo = mascara_roi([(30, 0), (40, 0), (40, 40), (30, 40)], 50, 50)
+    antro = mascara_roi([(0, 30), (40, 30), (40, 40), (0, 40)], 50, 50)
+    m = corpo | antro
+    e = eixo_automatico(m)
+    s = segmentar_por_eixo(m, e)
+    assert e[0][1] < 2 and e[-1][0] < 2  # do topo do corpo à ponta do antro
+    assert s.proximal[0:20, 30:40].all() and s.distal[30:40, 0:20].all()
+
+
+def test_eixo_automatico_acompanha_translacao():
+    m = _estomago()
+    e1 = eixo_automatico(m)
+    e2 = eixo_automatico(np.roll(np.roll(m, 5, axis=0), -7, axis=1))
+    assert np.allclose(np.array(e1) + [-7, 5], np.array(e2))
+
+
+def test_eixo_automatico_roi_minuscula():
+    m = np.zeros((10, 10), bool)
+    m[4, 4] = True
+    with pytest.raises(ValueError):
+        eixo_automatico(m)
 
 
 # --------------------------------------------------------------- cálculos

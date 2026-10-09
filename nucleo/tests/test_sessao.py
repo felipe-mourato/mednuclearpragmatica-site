@@ -131,32 +131,49 @@ def test_estado_tem_roi_e_eixo_espelhados_e_corte(sessao_pronta):
     assert t["roi_post"][0][0] == pytest.approx(64 - t["roi"][0][0])
     assert t["eixo_post"][0][0] == pytest.approx(64 - t["eixo"][0][0])
     seg = t["segmentacao"]
+    assert t["eixo_origem"] == "automatico"
     assert seg["pixels_proximal"] == seg["pixels_distal"] == 144  # retângulo 12 × 24 cortado ao meio
-    assert seg["ant"]["meio"] == pytest.approx([44, 28]) and seg["post"]["meio"] == pytest.approx([20, 28])
-    assert seg["comprimento_texto"] == "24,0 pixels" and seg["metade_texto"] == "12,0 pixels"
+    assert seg["ant"]["meio"] == pytest.approx([44, 28], abs=0.6) and seg["post"]["meio"] == pytest.approx([20, 28], abs=0.6)
+    assert seg["ant"]["inicio"][1] < seg["ant"]["fim"][1]  # começa no topo
 
 
-def test_validacao_exige_eixo(fantoma):
+def test_eixo_automatico_e_correcao_manual(fantoma):
     s = Sessao()
     for n, d in fantoma.arquivos.items():
         s.adicionar_arquivo(n, d)
+    assert "ROI" in comando(s, acao="estado")["estado"]["validacao"]["eixos"]
     s.desenhar_roi(0, fantoma.roi)
-    v = comando(s, acao="estado")["estado"]["validacao"]
-    assert v["rois"] is None and "eixo" in v["eixos"]
-    assert not comando(s, acao="resultados")["ok"]
+    e = comando(s, acao="estado")["estado"]
+    assert e["validacao"]["eixos"] is None  # eixo automático em todos os tempos
+    assert all(t["eixo_origem"] == "automatico" for t in e["tempos"])
+    assert comando(s, acao="resultados")["ok"]
     assert not comando(s, acao="desenhar_eixo", tempo=0, pontos=[[40, 20], [40, 21]])["ok"]  # curto demais
-    comando(s, acao="desenhar_eixo", tempo=2, pontos=fantoma.eixo)
-    assert all(s.eixos[i] == s.eixos[2] for i in range(4))  # primeiro eixo vale para todos
     comando(s, acao="desenhar_eixo", tempo=3, pontos=[[44, 40], [44, 16]])  # traçado de baixo para cima
     assert s.eixos[3][0] == (44.0, 16.0)  # reorientado: começa no topo do fundo
-    assert comando(s, acao="estado")["estado"]["validacao"]["eixos"] is None
+    origens = [t["eixo_origem"] for t in comando(s, acao="estado")["estado"]["tempos"]]
+    assert origens == ["automatico", "automatico", "automatico", "manual"]  # correção vale só no tempo
+    comando(s, acao="copiar_eixo", tempo=3)
+    assert all(t["eixo_origem"] == "manual" for t in comando(s, acao="estado")["estado"]["tempos"])
+    comando(s, acao="eixo_automatico", tempo=1)
+    assert comando(s, acao="estado")["estado"]["tempos"][1]["eixo_origem"] == "automatico"
+    comando(s, acao="eixo_automatico")
+    assert not s.eixos
+    comando(s, acao="desenhar_eixo", tempo=2, pontos=[[44, 16], [44, 40]])
+    comando(s, acao="desenhar_roi", tempo=2, pontos=fantoma.roi)  # ROI redesenhada descarta o eixo manual
+    assert 2 not in s.eixos
 
 
-def test_eixo_acompanha_o_arraste_da_roi(sessao_pronta):
-    antes = list(sessao_pronta.eixos[1])
+def test_eixo_acompanha_o_arraste_da_roi(sessao_pronta, fantoma):
+    def eixo(i):
+        return comando(sessao_pronta, acao="estado")["estado"]["tempos"][i]["eixo"]
+
+    antes = eixo(1)
     comando(sessao_pronta, acao="arrastar_roi", tempo=1, dx=2, dy=3, confirmar=True)
-    assert sessao_pronta.eixos[1] == [(x + 2, y + 3) for x, y in antes]
-    assert sessao_pronta.eixos[0] == antes
+    assert np.allclose(np.array(eixo(1)), np.array(antes) + [2, 3])  # automático, recalculado
+    sessao_pronta.desenhar_eixo(2, fantoma.eixo)
+    comando(sessao_pronta, acao="arrastar_roi", tempo=2, dx=-1, dy=1, confirmar=True)
+    assert sessao_pronta.eixos[2] == [(x - 1, y + 1) for x, y in fantoma.eixo]  # manual, transladado
+    assert np.allclose(np.array(eixo(0)), np.array(antes))
 
 
 def test_espacamento_de_pixel_da_comprimento_em_cm(fantoma):
@@ -170,7 +187,7 @@ def test_espacamento_de_pixel_da_comprimento_em_cm(fantoma):
         ds.save_as(b)
         s.adicionar_arquivo(n, b.getvalue())
     s.desenhar_roi(0, fantoma.roi)
-    s.desenhar_eixo(0, fantoma.eixo)
+    s.desenhar_eixo(0, fantoma.eixo)  # eixo manual de 24 pixels
     seg = comando(s, acao="estado")["estado"]["tempos"][0]["segmentacao"]
     assert seg["comprimento_texto"] == "15,4 cm"  # 24 pixels × 6,4 mm
     assert seg["metade_texto"] == "7,7 cm"

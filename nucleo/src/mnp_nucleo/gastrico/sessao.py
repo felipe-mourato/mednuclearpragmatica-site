@@ -11,7 +11,6 @@ Uso típico (navegador ou computador)::
     s.adicionar_arquivo("T0_ant.dcm", dados)
     ...
     s.executar('{"acao": "desenhar_roi", "tempo": 0, "pontos": [[10,10],[40,10],[25,40]]}')
-    s.executar('{"acao": "desenhar_eixo", "tempo": 0, "pontos": [[25,11],[25,38]]}')
     s.executar('{"acao": "resultados", "decaimento": true, "meia_vida": 6.0067, "faixa_etaria": "adulto"}')
 """
 
@@ -31,7 +30,7 @@ from ..comum.dicom import ErroDicom, ImagemDicom, adivinhar_vista, ler_dicom
 from ..comum.tabela import fmt_dec, fmt_int
 from . import referencias, relatorio
 from .calculo import calcular_resultados, contagens_regionais
-from .segmentacao import Segmentacao, comprimento_trajeto, preparar_eixo, segmentar_por_eixo
+from .segmentacao import Segmentacao, comprimento_trajeto, eixo_automatico, preparar_eixo, segmentar_por_eixo
 
 __all__ = ["Sessao", "MIN_TEMPOS", "COR_PROXIMAL", "COR_DISTAL"]
 
@@ -122,7 +121,9 @@ class Sessao:
         self.arquivos: dict[str, Arquivo] = {}
         self.tempos: list[Tempo] = []
         self.rois: dict[int, list] = {}
+        # Eixos traçados à mão (correções). Sem eixo manual, vale o automático.
         self.eixos: dict[int, list] = {}
+        self._cache_eixo: dict = {}
         self.sugestoes: list[str] = []
         self.erros: list[str] = []
         self._contador = 0
@@ -291,8 +292,12 @@ class Sessao:
         if self._validacao_rois():
             return self._validacao_rois()
         for t in self.tempos:
-            if len(self.eixos.get(t.indice, [])) < 2:
-                return "Trace o eixo longitudinal do estômago em todos os tempos para prosseguir."
+            try:
+                e, _ = self._eixo_efetivo(t)
+            except ErroSessao as erro:
+                return str(erro)
+            if not e or len(e) < 2:
+                return f"T{t.indice}: não foi possível traçar o eixo longitudinal."
         return None
 
     # ------------------------------------------------------------------- ROIs
@@ -316,10 +321,12 @@ class Sessao:
             raise ErroSessao("ROI pequena demais: desenhe um contorno maior.")
         primeira = not any(len(p) >= 3 for p in self.rois.values())
         self.rois[t.indice] = simplificado
+        self.eixos.pop(t.indice, None)
         if primeira:
             for outro in self.tempos:
                 if outro.indice != t.indice and not self._bloqueio(outro):
                     self.rois[outro.indice] = list(simplificado)
+                    self.eixos.pop(outro.indice, None)
 
     def copiar_roi(self, tempo) -> None:
         t = self._tempo(tempo)
@@ -329,14 +336,14 @@ class Sessao:
         for outro in self.tempos:
             if outro.indice != t.indice and not self._bloqueio(outro):
                 self.rois[outro.indice] = list(origem)
+                self.eixos.pop(outro.indice, None)
 
     def desenhar_eixo(self, tempo, pontos) -> None:
-        """Define o eixo longitudinal de um tempo a partir do traço à mão livre.
+        """Corrige à mão o eixo longitudinal de um tempo (substitui o automático só nele).
 
         O traço segue a linha média do estômago, do topo do fundo até o
         estômago distal; ele é simplificado e orientado para começar na
-        extremidade mais alta (ver :func:`segmentacao.preparar_eixo`). O
-        primeiro eixo traçado na sessão é copiado para todos os tempos.
+        extremidade mais alta (ver :func:`segmentacao.preparar_eixo`).
         """
         t = self._tempo(tempo)
         if self._bloqueio(t):
@@ -346,21 +353,47 @@ class Sessao:
         eixo = preparar_eixo(dentro, 1.5)
         if len(eixo) < 2 or comprimento_trajeto(eixo) < 4.0:
             raise ErroSessao("Eixo curto demais: trace do topo do fundo até o estômago distal.")
-        primeiro = not any(len(e) >= 2 for e in self.eixos.values())
         self.eixos[t.indice] = eixo
-        if primeiro:
-            for outro in self.tempos:
-                if outro.indice != t.indice and not self._bloqueio(outro):
-                    self.eixos[outro.indice] = list(eixo)
 
     def copiar_eixo(self, tempo) -> None:
+        """Usa o eixo deste tempo (manual ou automático) como eixo manual de todos os outros."""
         t = self._tempo(tempo)
-        origem = self.eixos.get(t.indice)
+        origem, _ = self._eixo_efetivo(t)
         if not origem:
             raise ErroSessao("Este tempo ainda não tem eixo.")
         for outro in self.tempos:
             if outro.indice != t.indice and not self._bloqueio(outro):
                 self.eixos[outro.indice] = list(origem)
+
+    def eixo_automatico_de_novo(self, tempo=None) -> None:
+        """Descarta a correção manual (de um tempo ou de todos) e volta ao eixo automático."""
+        if tempo is None:
+            self.eixos.clear()
+        else:
+            self.eixos.pop(self._tempo(tempo).indice, None)
+
+    def _eixo_auto(self, t: Tempo) -> list | None:
+        r = self.rois.get(t.indice)
+        if not r or self._bloqueio(t):
+            return None
+        linhas, colunas = self._dimensoes(t)
+        chave = (tuple(r), linhas, colunas)
+        if chave not in self._cache_eixo:
+            try:
+                eixo = eixo_automatico(roi.mascara_roi(r, linhas, colunas))
+            except ValueError as erro:
+                raise ErroSessao(f"T{t.indice}: {erro}") from None
+            if len(self._cache_eixo) > 64:
+                self._cache_eixo.clear()
+            self._cache_eixo[chave] = eixo
+        return self._cache_eixo[chave]
+
+    def _eixo_efetivo(self, t: Tempo) -> tuple[list | None, str | None]:
+        """Eixo usado no cálculo: o manual, se houver; senão, o automático."""
+        if self.eixos.get(t.indice):
+            return self.eixos[t.indice], "manual"
+        e = self._eixo_auto(t)
+        return (e, "automatico") if e else (None, None)
 
     def toca_roi(self, tempo, x, y) -> bool:
         t = self._tempo(tempo)
@@ -394,8 +427,10 @@ class Sessao:
     def _geometria(self, t: Tempo) -> Geometria | None:
         """Máscaras e divisão de um tempo (ROI e eixo; na posterior, ambos espelhados)."""
         r = self.rois.get(t.indice)
-        e = self.eixos.get(t.indice)
-        if not r or not e or self._bloqueio(t):
+        if not r or self._bloqueio(t):
+            return None
+        e, _ = self._eixo_efetivo(t)
+        if not e:
             return None
         a = self.arquivos[t.ant]
         chave = (t.indice, tuple(r), tuple(e), a.imagem.linhas, a.imagem.colunas)
@@ -476,8 +511,13 @@ class Sessao:
                 "rotulo": f"T{t.indice}",
                 "minutos": t.minutos,
                 "roi": _pontos_json(self.rois.get(t.indice, [])),
-                "eixo": _pontos_json(self.eixos.get(t.indice, [])),
             }
+            try:
+                eixo, origem = self._eixo_efetivo(t)
+            except ErroSessao:
+                eixo, origem = None, None
+            item["eixo"] = _pontos_json(eixo or [])
+            item["eixo_origem"] = origem
             for vista, id_ in (("ant", t.ant), ("post", t.post)):
                 a = self.arquivos.get(id_) if id_ else None
                 item[vista] = (
@@ -603,9 +643,15 @@ class Sessao:
                 "roi_post": None,
                 "eixo": None,
                 "eixo_post": None,
+                "eixo_origem": None,
                 "segmentacao": None,
             }
-            e = self.eixos.get(t.indice)
+            e = None
+            if not self._bloqueio(t):
+                try:
+                    e, item["eixo_origem"] = self._eixo_efetivo(t)
+                except ErroSessao as erro:
+                    erros_geo.append(str(erro))
             if not self._bloqueio(t):
                 linhas, colunas = self._dimensoes(t)
                 if r:
@@ -741,6 +787,9 @@ class Sessao:
                 return self._resposta()
             if acao == "copiar_eixo":
                 self.copiar_eixo(c["tempo"])
+                return self._resposta()
+            if acao == "eixo_automatico":
+                self.eixo_automatico_de_novo(c.get("tempo"))
                 return self._resposta()
             if acao == "toca_roi":
                 return self._resposta({"toca": self.toca_roi(c["tempo"], c["x"], c["y"])}, com_estado=False)

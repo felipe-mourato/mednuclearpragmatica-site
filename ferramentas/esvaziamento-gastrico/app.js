@@ -487,11 +487,12 @@
     const art = document.createElement('article');
     art.className = 'cartao-tempo';
     const temRoi = Boolean(t.roi);
-    const temEixo = Boolean(t.eixo);
+    const manual = t.eixo_origem === 'manual';
     const controles = comSegmentacao
       ? `<span>
-          <span class="selo ${temEixo ? '' : 'selo--neutro'}">${temEixo ? 'eixo traçado' : 'sem eixo'}</span>
-          <button type="button" class="mnp-btn mnp-btn--pequeno" data-copiar-eixo="${t.indice}" ${temEixo ? '' : 'disabled'}>Usar este eixo em todos</button>
+          <span class="selo ${manual ? '' : 'selo--neutro'}">${manual ? 'eixo corrigido à mão' : t.eixo ? 'eixo automático' : 'sem eixo'}</span>
+          ${manual ? `<button type="button" class="mnp-btn mnp-btn--pequeno" data-eixo-auto="${t.indice}">Voltar ao automático</button>
+          <button type="button" class="mnp-btn mnp-btn--pequeno" data-copiar-eixo="${t.indice}">Usar este eixo em todos</button>` : ''}
         </span>`
       : `<span>
           <span class="selo ${temRoi ? '' : 'selo--neutro'}">${temRoi ? 'ROI definida' : 'sem ROI'}</span>
@@ -512,7 +513,7 @@
       const a = arquivoPorId(id);
       const quadro = a.n_quadros > 1 ? ` · quadro ${a.quadro + 1}` : '';
       const col = document.createElement('div');
-      const rotuloAnt = comSegmentacao ? 'Anterior · trace o eixo aqui' : 'Anterior · desenhe aqui';
+      const rotuloAnt = comSegmentacao ? 'Anterior · trace aqui para corrigir' : 'Anterior · desenhe aqui';
       const rotuloPost = comSegmentacao ? 'Posterior · ROI e eixo espelhados' : 'Posterior · ROI espelhada';
       col.innerHTML = `<p class="visor-rotulo">${vista === 'ant' ? rotuloAnt : rotuloPost}${quadro}</p>`;
       const modo = vista === 'ant' ? (comSegmentacao ? 'eixo' : 'desenho') : 'leitura';
@@ -536,7 +537,10 @@
     for (const v of visores.values()) v.desenhar();
   }
   const renderRois = () => renderGrade('[data-rois]', false);
-  const renderSegmentacao = () => renderGrade('[data-segmentacao]', true);
+  const renderSegmentacao = () => {
+    renderGrade('[data-segmentacao]', true);
+    $('[data-acao="eixos-automaticos"]').hidden = !estado.tempos.some((t) => t.eixo_origem === 'manual');
+  };
 
   // ----------------------------------------------------------- passo 4
   function parametros() {
@@ -643,6 +647,8 @@
       else if (d.vista && d.arquivo) { cmd({ acao: 'definir_vista', arquivo: d.arquivo, vista: d.vista }); render(); }
       else if (d.copiar !== undefined) { cmd({ acao: 'copiar_roi', tempo: Number(d.copiar) }); render(); }
       else if (d.copiarEixo !== undefined) { cmd({ acao: 'copiar_eixo', tempo: Number(d.copiarEixo) }); render(); }
+      else if (d.eixoAuto !== undefined) { cmd({ acao: 'eixo_automatico', tempo: Number(d.eixoAuto) }); render(); }
+      else if (d.acao === 'eixos-automaticos') { cmd({ acao: 'eixo_automatico' }); render(); }
       else if (d.exportar) baixar(d.exportar);
       else if (d.cinza && visorDoMenu) {
         const v = visorDoMenu;
