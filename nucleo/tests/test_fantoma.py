@@ -36,6 +36,7 @@ def test_independe_da_atenuacao_posterior():
         for n, d in f.arquivos.items():
             s.adicionar_arquivo(n, d)
         s.desenhar_roi(0, f.roi)
+        s.desenhar_eixo(0, f.eixo)
         assert [round(l.retencao, 1) for l in s.resultados(True, 6.0067)] == [100.0, 60.0, 30.0, 8.0]
 
 
@@ -60,6 +61,7 @@ def test_multiframe_frames_1_e_2_como_ant_pos(fantoma):
     e = comando(s, acao="estado")["estado"]
     assert len(e["tempos"]) == 4 and e["validacao"]["arquivos"] is None
     s.desenhar_roi(0, fantoma.roi)
+    s.desenhar_eixo(0, fantoma.eixo)
     assert [round(l.retencao, 1) for l in s.resultados(True, 6.0067)] == [100.0, 60.0, 30.0, 8.0]
 
 
@@ -75,4 +77,5 @@ def test_rescale_nao_altera_resultado_relativo():
             n, gerar_dicom(img.quadros[0].astype(np.int64), img.data_hora, img.descricao, bits=32, inclinacao=0.25)
         )
     s.desenhar_roi(0, f.roi)
+    s.desenhar_eixo(0, f.eixo)
     assert [round(l.retencao, 1) for l in s.resultados(True, 6.0067)] == [100.0, 60.0, 30.0, 8.0]

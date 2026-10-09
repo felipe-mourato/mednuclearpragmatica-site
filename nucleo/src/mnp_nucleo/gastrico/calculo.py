@@ -17,11 +17,15 @@ from ..comum.contagens import fator_decaimento, media_geometrica, soma_contagens
 __all__ = [
     "ContagensRegionais",
     "LinhaResultado",
+    "RETENCAO_MINIMA_REGIONAL",
     "retencao_percentual",
     "contagens_regionais",
     "calcular_resultados",
-    "REFERENCIA_TOUGAS_2000",
 ]
+
+#: Abaixo desta retenção total (%), a distribuição regional não é avaliável
+#: (contagens insuficientes). Silver 2022: "<5% TGR ... non-evaluable for RIMD".
+RETENCAO_MINIMA_REGIONAL = 5.0
 
 
 @dataclass
@@ -33,8 +37,6 @@ class ContagensRegionais:
     total_post: float
     proximal_ant: float
     proximal_post: float
-    distal_ant: float
-    distal_post: float
     mg_total: float
     mg_proximal: float
     mg_distal: float
@@ -48,25 +50,15 @@ class LinhaResultado:
     mg_proximal: float
     mg_distal: float
     distribuicao_proximal: float
+    razao_pd: float | None
     esvaziamento: float
     retencao: float
     retencao_proximal: float
     retencao_distal: float
+    regional_avaliavel: bool
 
     def como_dict(self) -> dict:
         return asdict(self)
-
-
-#: Percentil 95 da retenção gástrica em 123 voluntários saudáveis, refeição
-#: de baixo teor de gordura (substituto de ovo) marcada com ⁹⁹ᵐTc.
-#: Retenção acima desses valores indica esvaziamento lento NESSE protocolo.
-#: Tougas G et al. Am J Gastroenterol. 2000;95:1456-62.
-#: doi:10.1111/j.1572-0241.2000.02076.x
-REFERENCIA_TOUGAS_2000 = (
-    {"minutos": 60, "mediana": 69.0, "p95": 90.0},
-    {"minutos": 120, "mediana": 24.0, "p95": 60.0},
-    {"minutos": 240, "mediana": 1.2, "p95": 10.0},
-)
 
 
 def retencao_percentual(mg_t: float, mg_t0: float, minutos: float, meia_vida_h: float | None) -> float:
@@ -92,36 +84,34 @@ def contagens_regionais(
     valores_post: np.ndarray,
     mascara_ant: np.ndarray,
     proximal_ant: np.ndarray,
-    distal_ant: np.ndarray,
     mascara_post: np.ndarray,
     proximal_post: np.ndarray,
-    distal_post: np.ndarray,
 ) -> ContagensRegionais:
-    """Soma as contagens de cada região nas duas vistas e calcula as médias geométricas.
+    """Contagens totais e proximais nas duas vistas e as médias geométricas.
 
-    MG(região) = √( C_ANT(região) × C_POST(região) ), região ∈ {total, proximal, distal}.
+    MG_total = √( C_ANT(ROI total) × C_PÓS(ROI total) )
+    MG_prox  = √( C_ANT(proximal) × C_PÓS(proximal) )
+    MG_dist  = MG_total − MG_prox
 
-    As máscaras posteriores vêm da ROI espelhada (ver
-    :func:`mnp_nucleo.comum.roi.espelhar_horizontal`), segmentada de novo
-    para que proximal continue sendo a metade superior.
+    Contagens distais = total − proximal, como em Silver et al. 2022
+    (Neurogastroenterol Motil 2022;34:e14436, doi:10.1111/nmo.14436). As
+    máscaras posteriores vêm da ROI e do eixo espelhados.
     """
     t_a = soma_contagens(valores_ant, mascara_ant)
     t_p = soma_contagens(valores_post, mascara_post)
     p_a = soma_contagens(valores_ant, proximal_ant)
     p_p = soma_contagens(valores_post, proximal_post)
-    d_a = soma_contagens(valores_ant, distal_ant)
-    d_p = soma_contagens(valores_post, distal_post)
+    mg_total = media_geometrica(t_a, t_p)
+    mg_prox = media_geometrica(p_a, p_p)
     return ContagensRegionais(
         minutos=float(minutos),
         total_ant=t_a,
         total_post=t_p,
         proximal_ant=p_a,
         proximal_post=p_p,
-        distal_ant=d_a,
-        distal_post=d_p,
-        mg_total=media_geometrica(t_a, t_p),
-        mg_proximal=media_geometrica(p_a, p_p),
-        mg_distal=media_geometrica(d_a, d_p),
+        mg_total=mg_total,
+        mg_proximal=mg_prox,
+        mg_distal=mg_total - mg_prox,
     )
 
 
@@ -132,14 +122,14 @@ def calcular_resultados(tempos: list[ContagensRegionais], meia_vida_h: float | N
 
     - Retenção R(t): ver :func:`retencao_percentual`; R(T0) = 100.
     - Esvaziamento E(t) = 100 − R(t); E(T0) = 0.
-    - Distribuição proximal D(t) = MG_prox(t) / MG_total(t) × 100. No T0 é a
-      distribuição intragástrica da refeição (IMD₀; Orthey 2018).
-    - Retenção proximal Rp(t) = R(t) × D(t) / 100.
-    - Retenção distal Rd(t) = R(t) − Rp(t).
+    - Distribuição proximal D(t) = MG_prox(t) / MG_total(t) × 100 (no T0, é a
+      distribuição intragástrica da refeição, IMD; Orthey 2018).
+    - Razão proximal/distal PDCR(t) = MG_prox(t) / MG_dist(t) (Silver 2022).
+    - Retenção proximal Rp(t) = R(t) × D(t) / 100; distal Rd(t) = R(t) − Rp(t).
 
-    Assim Rp + Rd = R em todas as linhas. Nota: como √(a·b) não é aditiva,
-    MG_prox + MG_dist em geral difere um pouco de MG_total; por isso as
-    parcelas usam a fração D(t), e não MG_dist diretamente.
+    Rp + Rd = R em todas as linhas. Com R(t) < 5%, PDCR fica indefinida
+    (``None``) e a linha é marcada como não avaliável para a distribuição
+    regional (Silver 2022).
     """
     if not tempos:
         return []
@@ -147,12 +137,13 @@ def calcular_resultados(tempos: list[ContagensRegionais], meia_vida_h: float | N
     linhas = []
     for i, t in enumerate(tempos):
         if i == 0:
-            retencao = 100.0
-            esvaziamento = 0.0
+            retencao, esvaziamento = 100.0, 0.0
         else:
             retencao = retencao_percentual(t.mg_total, mg_t0, t.minutos, meia_vida_h)
             esvaziamento = 100.0 - retencao
         distribuicao = (t.mg_proximal / t.mg_total) * 100.0 if t.mg_total > 0 else 0.0
+        avaliavel = retencao >= RETENCAO_MINIMA_REGIONAL and t.mg_total > 0
+        razao = t.mg_proximal / t.mg_distal if (avaliavel and t.mg_distal > 0) else None
         ret_prox = retencao * distribuicao / 100.0
         linhas.append(
             LinhaResultado(
@@ -162,10 +153,12 @@ def calcular_resultados(tempos: list[ContagensRegionais], meia_vida_h: float | N
                 mg_proximal=t.mg_proximal,
                 mg_distal=t.mg_distal,
                 distribuicao_proximal=distribuicao,
+                razao_pd=razao,
                 esvaziamento=esvaziamento,
                 retencao=retencao,
                 retencao_proximal=ret_prox,
                 retencao_distal=retencao - ret_prox,
+                regional_avaliavel=avaliavel,
             )
         )
     return linhas

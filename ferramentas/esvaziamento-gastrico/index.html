@@ -67,7 +67,7 @@
       <ol>
         <li><button type="button" data-passo="0"><span class="num">1</span>Imagens</button></li>
         <li><button type="button" data-passo="1"><span class="num">2</span>ROI</button></li>
-        <li><button type="button" data-passo="2"><span class="num">3</span>Segmentação</button></li>
+        <li><button type="button" data-passo="2"><span class="num">3</span>Eixo e divisão</button></li>
         <li><button type="button" data-passo="3"><span class="num">4</span>Resultados e laudo</button></li>
       </ol>
     </nav>
@@ -102,19 +102,22 @@
       <div class="acoes">
         <button type="button" class="mnp-btn" data-ir="0">Voltar</button>
         <p class="validacao" data-validacao="1"></p>
-        <button type="button" class="mnp-btn mnp-btn--principal" data-ir="2">Ver a segmentação</button>
+        <button type="button" class="mnp-btn mnp-btn--principal" data-ir="2">Ver eixo e divisão</button>
       </div>
     </section>
 
     <!-- Passo 3 -->
     <section class="passo" data-painel="2" aria-labelledby="t-passo-3" hidden>
-      <h2 id="t-passo-3">Segmentação proximal e distal</h2>
+      <h2 id="t-passo-3">Eixo longitudinal e divisão proximal/distal</h2>
       <div class="instrucoes">
-        <p>Cada ROI foi dividida ao longo do eixo principal do estômago em duas metades com o mesmo número de pixels: <span class="chave chave-prox">proximal</span> (superior) e <span class="chave chave-dist">distal</span> (inferior). Arraste a ROI na anterior para reposicionar; a divisão é refeita na hora.</p>
+        <p>O eixo longitudinal é traçado <strong>automaticamente</strong> pela linha média da ROI, do <strong>topo do fundo</strong> até a <strong>extremidade distal</strong>. O eixo é dividido ao meio do comprimento, e o corte perpendicular nesse ponto separa a metade <span class="chave chave-prox">proximal</span> da <span class="chave chave-dist">distal</span>. A contagem distal é o total menos a proximal (Silver et al., 2022).</p>
+        <p>Confira cada tempo. Se discordar do eixo, trace outro à mão na imagem anterior, do topo do fundo ao estômago distal: a correção vale só para aquele tempo.</p>
+        <p class="nota">O eixo automático depende só do contorno da ROI: desenhe a ROI acompanhando o estômago. Ele liga as duas extremidades da ROI mais distantes entre si, por dentro dela, pelo caminho mais afastado das bordas. Na posterior, ROI e eixo são espelhados.</p>
       </div>
       <div data-segmentacao class="grade-tempos"></div>
       <div class="acoes">
-        <button type="button" class="mnp-btn" data-ir="1">Voltar e redesenhar</button>
+        <button type="button" class="mnp-btn" data-ir="1">Voltar à ROI</button>
+        <button type="button" class="mnp-btn" data-acao="eixos-automaticos" hidden>Voltar todos ao automático</button>
         <p class="validacao" data-validacao="2"></p>
         <button type="button" class="mnp-btn mnp-btn--principal" data-ir="3">Calcular</button>
       </div>
@@ -123,6 +126,18 @@
     <!-- Passo 4 -->
     <section class="passo" data-painel="3" aria-labelledby="t-passo-4" hidden>
       <h2 id="t-passo-4">Resultados</h2>
+      <fieldset class="paciente">
+        <legend>O paciente é adulto ou pediátrico?</legend>
+        <label class="caixa"><input type="radio" name="faixa-etaria" value="adulto" data-faixa-etaria> Adulto</label>
+        <label class="caixa"><input type="radio" name="faixa-etaria" value="pediatrico" data-faixa-etaria> Pediátrico</label>
+        <label class="campo" data-campo-refeicao hidden>Refeição
+          <select data-refeicao>
+            <option value="ovo">Clara de ovo ou Ensure Plus (4 h)</option>
+            <option value="aveia">Aveia (1 h)</option>
+          </select>
+        </label>
+        <p class="nota" data-nota-referencia>Escolha para comparar os resultados com os valores de referência.</p>
+      </fieldset>
       <div class="parametros">
         <label class="caixa"><input type="checkbox" data-decaimento checked> Correção de decaimento</label>
         <label class="campo">Meia-vida (h) <input type="text" inputmode="decimal" value="6,0067" data-meia-vida size="7"></label>
@@ -130,6 +145,7 @@
       </div>
       <p class="erro" data-erro-resultados hidden></p>
       <div class="tabela-rolagem"><table class="resultados" data-tabela></table></div>
+      <div class="comparacao" data-comparacao hidden></div>
       <ul class="notas" data-notas></ul>
       <figure class="figura-curva">
         <figcaption><span class="mnp-eyebrow">Curva de retenção</span></figcaption>

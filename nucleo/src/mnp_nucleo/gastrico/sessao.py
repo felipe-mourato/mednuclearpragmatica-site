@@ -11,7 +11,7 @@ Uso típico (navegador ou computador)::
     s.adicionar_arquivo("T0_ant.dcm", dados)
     ...
     s.executar('{"acao": "desenhar_roi", "tempo": 0, "pontos": [[10,10],[40,10],[25,40]]}')
-    s.executar('{"acao": "resultados", "decaimento": true, "meia_vida": 6.0067}')
+    s.executar('{"acao": "resultados", "decaimento": true, "meia_vida": 6.0067, "faixa_etaria": "adulto"}')
 """
 
 from __future__ import annotations
@@ -28,9 +28,9 @@ from ..comum import exibicao, roi
 from ..comum.contagens import MEIA_VIDA_TC99M_H
 from ..comum.dicom import ErroDicom, ImagemDicom, adivinhar_vista, ler_dicom
 from ..comum.tabela import fmt_dec, fmt_int
-from . import relatorio
+from . import referencias, relatorio
 from .calculo import calcular_resultados, contagens_regionais
-from .segmentacao import Segmentacao, segmentar_roi
+from .segmentacao import Segmentacao, comprimento_trajeto, eixo_automatico, preparar_eixo, segmentar_por_eixo
 
 __all__ = ["Sessao", "MIN_TEMPOS", "COR_PROXIMAL", "COR_DISTAL"]
 
@@ -66,6 +66,8 @@ class Tempo:
 class Geometria:
     roi_ant: list
     roi_post: list
+    eixo_ant: list
+    eixo_post: list
     mascara_ant: np.ndarray
     mascara_post: np.ndarray
     seg_ant: Segmentacao
@@ -100,6 +102,14 @@ def _pontos_json(pontos) -> list:
     return [[round(x, 3), round(y, 3)] for x, y in pontos]
 
 
+def _referencia(c: dict):
+    """Referência escolhida nos resultados (faixa etária e, no pediátrico, a refeição)."""
+    faixa = c.get("faixa_etaria") or None
+    if faixa not in (None, "adulto", "pediatrico"):
+        raise ErroSessao("Faixa etária deve ser adulto ou pediátrico.")
+    return referencias.obter(faixa, c.get("refeicao"))
+
+
 class Sessao:
     """Estado de um exame de esvaziamento gástrico em processamento."""
 
@@ -111,6 +121,9 @@ class Sessao:
         self.arquivos: dict[str, Arquivo] = {}
         self.tempos: list[Tempo] = []
         self.rois: dict[int, list] = {}
+        # Eixos traçados à mão (correções). Sem eixo manual, vale o automático.
+        self.eixos: dict[int, list] = {}
+        self._cache_eixo: dict = {}
         self.sugestoes: list[str] = []
         self.erros: list[str] = []
         self._contador = 0
@@ -193,6 +206,7 @@ class Sessao:
             novos.append(novo)
         self.tempos = novos
         self.rois = {i: p for i, p in self.rois.items() if i < len(novos)}
+        self.eixos = {i: p for i, p in self.eixos.items() if i < len(novos)}
 
     def aceitar_multiframe(self, arquivo: str) -> None:
         """Usa o quadro 1 do arquivo como anterior e o quadro 2 como posterior."""
@@ -215,7 +229,7 @@ class Sessao:
         self._parear()
 
     def definir_quadro(self, arquivo: str, quadro) -> None:
-        """Troca o quadro de um arquivo multiframe e descarta a ROI daquele tempo."""
+        """Troca o quadro de um arquivo multiframe e descarta a ROI e o eixo daquele tempo."""
         a = self._arquivo(arquivo)
         q = int(quadro)
         if not 0 <= q < a.imagem.n_quadros:
@@ -225,6 +239,7 @@ class Sessao:
         for t in self.tempos:
             if arquivo in (t.ant, t.post):
                 self.rois.pop(t.indice, None)
+                self.eixos.pop(t.indice, None)
 
     def remover_arquivo(self, arquivo: str) -> None:
         self._arquivo(arquivo)
@@ -273,6 +288,18 @@ class Sessao:
                 return "Desenhe a ROI em todos os tempos para prosseguir."
         return None
 
+    def _validacao_eixos(self) -> str | None:
+        if self._validacao_rois():
+            return self._validacao_rois()
+        for t in self.tempos:
+            try:
+                e, _ = self._eixo_efetivo(t)
+            except ErroSessao as erro:
+                return str(erro)
+            if not e or len(e) < 2:
+                return f"T{t.indice}: não foi possível traçar o eixo longitudinal."
+        return None
+
     # ------------------------------------------------------------------- ROIs
     def _dimensoes(self, t: Tempo) -> tuple[int, int]:
         a = self.arquivos[t.ant or t.post]
@@ -294,10 +321,12 @@ class Sessao:
             raise ErroSessao("ROI pequena demais: desenhe um contorno maior.")
         primeira = not any(len(p) >= 3 for p in self.rois.values())
         self.rois[t.indice] = simplificado
+        self.eixos.pop(t.indice, None)
         if primeira:
             for outro in self.tempos:
                 if outro.indice != t.indice and not self._bloqueio(outro):
                     self.rois[outro.indice] = list(simplificado)
+                    self.eixos.pop(outro.indice, None)
 
     def copiar_roi(self, tempo) -> None:
         t = self._tempo(tempo)
@@ -307,6 +336,64 @@ class Sessao:
         for outro in self.tempos:
             if outro.indice != t.indice and not self._bloqueio(outro):
                 self.rois[outro.indice] = list(origem)
+                self.eixos.pop(outro.indice, None)
+
+    def desenhar_eixo(self, tempo, pontos) -> None:
+        """Corrige à mão o eixo longitudinal de um tempo (substitui o automático só nele).
+
+        O traço segue a linha média do estômago, do topo do fundo até o
+        estômago distal; ele é simplificado e orientado para começar na
+        extremidade mais alta (ver :func:`segmentacao.preparar_eixo`).
+        """
+        t = self._tempo(tempo)
+        if self._bloqueio(t):
+            raise ErroSessao(self._bloqueio(t))
+        linhas, colunas = self._dimensoes(t)
+        dentro = [(min(max(x, 0.0), float(colunas)), min(max(y, 0.0), float(linhas))) for x, y in roi.normalizar(pontos)]
+        eixo = preparar_eixo(dentro, 1.5)
+        if len(eixo) < 2 or comprimento_trajeto(eixo) < 4.0:
+            raise ErroSessao("Eixo curto demais: trace do topo do fundo até o estômago distal.")
+        self.eixos[t.indice] = eixo
+
+    def copiar_eixo(self, tempo) -> None:
+        """Usa o eixo deste tempo (manual ou automático) como eixo manual de todos os outros."""
+        t = self._tempo(tempo)
+        origem, _ = self._eixo_efetivo(t)
+        if not origem:
+            raise ErroSessao("Este tempo ainda não tem eixo.")
+        for outro in self.tempos:
+            if outro.indice != t.indice and not self._bloqueio(outro):
+                self.eixos[outro.indice] = list(origem)
+
+    def eixo_automatico_de_novo(self, tempo=None) -> None:
+        """Descarta a correção manual (de um tempo ou de todos) e volta ao eixo automático."""
+        if tempo is None:
+            self.eixos.clear()
+        else:
+            self.eixos.pop(self._tempo(tempo).indice, None)
+
+    def _eixo_auto(self, t: Tempo) -> list | None:
+        r = self.rois.get(t.indice)
+        if not r or self._bloqueio(t):
+            return None
+        linhas, colunas = self._dimensoes(t)
+        chave = (tuple(r), linhas, colunas)
+        if chave not in self._cache_eixo:
+            try:
+                eixo = eixo_automatico(roi.mascara_roi(r, linhas, colunas))
+            except ValueError as erro:
+                raise ErroSessao(f"T{t.indice}: {erro}") from None
+            if len(self._cache_eixo) > 64:
+                self._cache_eixo.clear()
+            self._cache_eixo[chave] = eixo
+        return self._cache_eixo[chave]
+
+    def _eixo_efetivo(self, t: Tempo) -> tuple[list | None, str | None]:
+        """Eixo usado no cálculo: o manual, se houver; senão, o automático."""
+        if self.eixos.get(t.indice):
+            return self.eixos[t.indice], "manual"
+        e = self._eixo_auto(t)
+        return (e, "automatico") if e else (None, None)
 
     def toca_roi(self, tempo, x, y) -> bool:
         t = self._tempo(tempo)
@@ -317,7 +404,10 @@ class Sessao:
         return roi.ponto_perto_do_poligono((float(x), float(y)), r, max(2.0, colunas / 48.0))
 
     def arrastar_roi(self, tempo, dx, dy, confirmar: bool) -> dict:
-        """Desloca a ROI de um tempo sem sair da imagem; só grava se ``confirmar``."""
+        """Desloca a ROI de um tempo sem sair da imagem; só grava se ``confirmar``.
+
+        O eixo daquele tempo, se houver, acompanha a ROI (mesmo deslocamento).
+        """
         t = self._tempo(tempo)
         r = self.rois.get(t.indice)
         if not r:
@@ -327,27 +417,36 @@ class Sessao:
         nova = roi.transladar(r, ddx, ddy)
         if confirmar:
             self.rois[t.indice] = nova
+            if self.eixos.get(t.indice):
+                self.eixos[t.indice] = roi.transladar(self.eixos[t.indice], ddx, ddy)
         return {
             "roi": _pontos_json(nova),
             "roi_post": _pontos_json(roi.espelhar_horizontal(nova, colunas)),
         }
 
     def _geometria(self, t: Tempo) -> Geometria | None:
+        """Máscaras e divisão de um tempo (ROI e eixo; na posterior, ambos espelhados)."""
         r = self.rois.get(t.indice)
         if not r or self._bloqueio(t):
             return None
-        a, p = self.arquivos[t.ant], self.arquivos[t.post]
-        chave = (t.indice, tuple(r), a.imagem.linhas, a.imagem.colunas)
+        e, _ = self._eixo_efetivo(t)
+        if not e:
+            return None
+        a = self.arquivos[t.ant]
+        chave = (t.indice, tuple(r), tuple(e), a.imagem.linhas, a.imagem.colunas)
         if chave in self._cache_geo:
             return self._cache_geo[chave]
         linhas, colunas = a.imagem.linhas, a.imagem.colunas
         roi_post = roi.espelhar_horizontal(r, colunas)
+        eixo_post = roi.espelhar_horizontal(e, colunas)
         m_ant = roi.mascara_roi(r, linhas, colunas)
         m_post = roi.mascara_roi(roi_post, linhas, colunas)
         try:
-            geo = Geometria(r, roi_post, m_ant, m_post, segmentar_roi(m_ant), segmentar_roi(m_post))
-        except ValueError:
-            raise ErroSessao(f"T{t.indice}: ROI vazia ou pequena demais para segmentação.") from None
+            geo = Geometria(
+                r, roi_post, e, eixo_post, m_ant, m_post, segmentar_por_eixo(m_ant, e), segmentar_por_eixo(m_post, eixo_post)
+            )
+        except ValueError as erro:
+            raise ErroSessao(f"T{t.indice}: {erro}") from None
         if len(self._cache_geo) > 64:
             self._cache_geo.clear()
         self._cache_geo[chave] = geo
@@ -356,7 +455,7 @@ class Sessao:
     # ------------------------------------------------------------- resultados
     def contagens(self):
         """Contagens regionais de todos os tempos, na ordem T0, T1, ..."""
-        problema = self._validacao_rois()
+        problema = self._validacao_eixos()
         if problema:
             raise ErroSessao(problema)
         saida = []
@@ -371,10 +470,8 @@ class Sessao:
                         p.valores(),
                         g.mascara_ant,
                         g.seg_ant.proximal,
-                        g.seg_ant.distal,
                         g.mascara_post,
                         g.seg_post.proximal,
-                        g.seg_post.distal,
                     )
                 )
             except ValueError as erro:
@@ -402,14 +499,25 @@ class Sessao:
     def protocolo(self, decaimento=True, meia_vida=MEIA_VIDA_TC99M_H) -> dict:
         """Tudo o que é preciso para refazer o cálculo em lote no computador.
 
-        Contém nomes e SHA-256 dos arquivos, quadros, vistas, minutos e ROIs.
+        Contém nomes e SHA-256 dos arquivos, quadros, vistas, minutos, ROIs e
+        eixos longitudinais.
         Não contém pixels nem dados do paciente (mas os nomes dos arquivos
         podem conter; renomeie-os antes de compartilhar o protocolo).
         """
         mv = _meia_vida(decaimento, meia_vida)
         tempos = []
         for t in self.tempos:
-            item = {"rotulo": f"T{t.indice}", "minutos": t.minutos, "roi": _pontos_json(self.rois.get(t.indice, []))}
+            item = {
+                "rotulo": f"T{t.indice}",
+                "minutos": t.minutos,
+                "roi": _pontos_json(self.rois.get(t.indice, [])),
+            }
+            try:
+                eixo, origem = self._eixo_efetivo(t)
+            except ErroSessao:
+                eixo, origem = None, None
+            item["eixo"] = _pontos_json(eixo or [])
+            item["eixo_origem"] = origem
             for vista, id_ in (("ant", t.ant), ("post", t.post)):
                 a = self.arquivos.get(id_) if id_ else None
                 item[vista] = (
@@ -418,7 +526,7 @@ class Sessao:
             tempos.append(item)
         return {
             "ferramenta": "esvaziamento-gastrico",
-            "formato": 1,
+            "formato": 2,
             "versao_nucleo": __version__,
             "decaimento": mv is not None,
             "meia_vida_h": mv,
@@ -435,6 +543,11 @@ class Sessao:
         """
         if protocolo.get("ferramenta") != "esvaziamento-gastrico":
             raise ErroSessao("Protocolo de outra ferramenta.")
+        if int(protocolo.get("formato", 1)) < 2:
+            raise ErroSessao(
+                "Protocolo do núcleo 0.1 (divisão proximal/distal antiga, sem eixo longitudinal). "
+                "Refaça o exame na ferramenta para gerar um protocolo novo."
+            )
         s = cls()
         cache: dict[str, ImagemDicom] = {}
         for i, item in enumerate(protocolo["tempos"]):
@@ -458,6 +571,8 @@ class Sessao:
             s.tempos.append(Tempo(i, ids["ant"], ids["post"], item.get("minutos"), False, dif))
             if item.get("roi"):
                 s.rois[i] = roi.normalizar(item["roi"])
+            if item.get("eixo"):
+                s.eixos[i] = roi.normalizar(item["eixo"])
         return s
 
     # ---------------------------------------------------------------- imagem
@@ -526,19 +641,28 @@ class Sessao:
                 "bloqueio": self._bloqueio(t),
                 "roi": _pontos_json(r) if r else None,
                 "roi_post": None,
+                "eixo": None,
+                "eixo_post": None,
+                "eixo_origem": None,
                 "segmentacao": None,
             }
-            if r and not self._bloqueio(t):
+            e = None
+            if not self._bloqueio(t):
+                try:
+                    e, item["eixo_origem"] = self._eixo_efetivo(t)
+                except ErroSessao as erro:
+                    erros_geo.append(str(erro))
+            if not self._bloqueio(t):
                 linhas, colunas = self._dimensoes(t)
-                item["roi_post"] = _pontos_json(roi.espelhar_horizontal(r, colunas))
+                if r:
+                    item["roi_post"] = _pontos_json(roi.espelhar_horizontal(r, colunas))
+                if e:
+                    item["eixo"] = _pontos_json(e)
+                    item["eixo_post"] = _pontos_json(roi.espelhar_horizontal(e, colunas))
                 try:
                     g = self._geometria(t)
-                    item["segmentacao"] = {
-                        "linha_ant": [list(p) for p in g.seg_ant.linha],
-                        "linha_post": [list(p) for p in g.seg_post.linha],
-                        "pixels_proximal": int(g.seg_ant.proximal.sum()),
-                        "pixels_distal": int(g.seg_ant.distal.sum()),
-                    }
+                    if g is not None:
+                        item["segmentacao"] = self._resumo_segmentacao(t, g)
                 except ErroSessao as erro:
                     erros_geo.append(str(erro))
             tempos.append(item)
@@ -556,8 +680,39 @@ class Sessao:
             "erros_segmentacao": erros_geo,
             "validacao": {
                 "arquivos": self._validacao_arquivos(),
-                "rois": self._validacao_rois() or (erros_geo[0] if erros_geo else None),
+                "rois": self._validacao_rois(),
+                "eixos": self._validacao_eixos() or (erros_geo[0] if erros_geo else None),
             },
+        }
+
+    def _comprimento_cm(self, t: Tempo, eixo) -> float | None:
+        esp = self.arquivos[t.ant].imagem.espacamento_mm
+        if not esp:
+            return None
+        sy, sx = esp
+        return sum(math.hypot((b[0] - a[0]) * sx, (b[1] - a[1]) * sy) for a, b in zip(eixo, eixo[1:])) / 10.0
+
+    def _resumo_segmentacao(self, t: Tempo, g: Geometria) -> dict:
+        cm = self._comprimento_cm(t, g.eixo_ant)
+
+        def lado(s: Segmentacao) -> dict:
+            return {
+                "corte": [list(p) for p in s.corte],
+                "meio": list(s.meio),
+                "inicio": list(s.eixo[0]),
+                "fim": list(s.eixo[-1]),
+            }
+
+        return {
+            "ant": lado(g.seg_ant),
+            "post": lado(g.seg_post),
+            "comprimento_px": round(g.seg_ant.comprimento, 1),
+            "comprimento_texto": (f"{fmt_dec(cm, 1)} cm" if cm is not None else f"{fmt_dec(g.seg_ant.comprimento, 1)} pixels"),
+            "metade_texto": (
+                f"{fmt_dec(cm / 2, 1)} cm" if cm is not None else f"{fmt_dec(g.seg_ant.comprimento / 2, 1)} pixels"
+            ),
+            "pixels_proximal": int(g.seg_ant.proximal.sum()),
+            "pixels_distal": int(g.seg_ant.distal.sum()),
         }
 
     def _resposta(self, extra: dict | None = None, com_estado: bool = True) -> str:
@@ -594,7 +749,14 @@ class Sessao:
                 for nome, dados in origem.items():
                     self.adicionar_arquivo(f"fantoma_{nome}", dados)
                 return self._resposta(
-                    {"fantoma": {"retencao": f.retencao, "distribuicao": f.distribuicao, "roi": _pontos_json(f.roi)}}
+                    {
+                        "fantoma": {
+                            "retencao": f.retencao,
+                            "distribuicao": f.distribuicao,
+                            "roi": _pontos_json(f.roi),
+                            "eixo": _pontos_json(f.eixo),
+                        }
+                    }
                 )
             if acao == "aceitar_multiframe":
                 self.aceitar_multiframe(c["arquivo"])
@@ -620,6 +782,15 @@ class Sessao:
             if acao == "copiar_roi":
                 self.copiar_roi(c["tempo"])
                 return self._resposta()
+            if acao == "desenhar_eixo":
+                self.desenhar_eixo(c["tempo"], c["pontos"])
+                return self._resposta()
+            if acao == "copiar_eixo":
+                self.copiar_eixo(c["tempo"])
+                return self._resposta()
+            if acao == "eixo_automatico":
+                self.eixo_automatico_de_novo(c.get("tempo"))
+                return self._resposta()
             if acao == "toca_roi":
                 return self._resposta({"toca": self.toca_roi(c["tempo"], c["x"], c["y"])}, com_estado=False)
             if acao == "arrastar_roi":
@@ -631,13 +802,15 @@ class Sessao:
                 return self._resposta({"nivel": j.nivel, "largura": j.largura}, com_estado=False)
             if acao == "resultados":
                 mv = _meia_vida(c.get("decaimento", True), c.get("meia_vida"))
+                ref = _referencia(c)
                 linhas = calcular_resultados(self.contagens(), mv)
                 return self._resposta(
                     {
                         "colunas": [{"chave": k, "titulo": t, "ajuda": a} for k, t, a in relatorio.COLUNAS],
-                        "linhas": relatorio.linhas_formatadas(linhas),
+                        "linhas": relatorio.linhas_formatadas(linhas, ref),
                         "svg": relatorio.curva_svg(linhas),
                         "notas": list(relatorio.NOTAS_FORMULAS),
+                        "referencia": relatorio.descrever_referencia(ref),
                         "meia_vida_h": mv,
                         "versao": __version__,
                     },
@@ -648,7 +821,9 @@ class Sessao:
                 linhas = calcular_resultados(self.contagens(), mv)
                 v = versoes()
                 v.update({k: str(x) for k, x in (c.get("versoes_extra") or {}).items()})
-                html = relatorio.laudo_html(linhas, mv, v, self._tempos_info(), str(c.get("identificacao") or ""))
+                html = relatorio.laudo_html(
+                    linhas, mv, v, self._tempos_info(), str(c.get("identificacao") or ""), referencia=_referencia(c)
+                )
                 return self._resposta({"html": html}, com_estado=False)
             if acao == "protocolo":
                 return self._resposta(
@@ -671,8 +846,9 @@ class Sessao:
                 self.protocolo(pedido.get("decaimento", True), pedido.get("meia_vida")), ensure_ascii=False, indent=2
             ).encode("utf-8")
         linhas = calcular_resultados(self.contagens(), mv)
+        ref = _referencia(pedido)
         if formato == "csv":
-            return relatorio.csv_resultados(linhas)
+            return relatorio.csv_resultados(linhas, ref)
         if formato == "xlsx":
-            return relatorio.xlsx_resultados(linhas, mv, __version__)
+            return relatorio.xlsx_resultados(linhas, mv, __version__, ref)
         raise ErroSessao("Formato de exportação desconhecido.")

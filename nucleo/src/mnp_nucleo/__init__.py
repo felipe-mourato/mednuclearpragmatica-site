@@ -2,7 +2,7 @@
 
 # Versão do núcleo. É a mesma que aparece nos resultados e no laudo das
 # ferramentas. Ao mudar, registre a mudança em nucleo/CHANGELOG.md.
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 
 def versoes() -> dict:

@@ -18,7 +18,7 @@ def comando(sessao, **kw):
 
 @pytest.fixture
 def sessao_pronta(fantoma):
-    """Sessão com o fantoma carregado e a ROI desenhada no T0 (copiada para os demais)."""
+    """Sessão com o fantoma carregado e a ROI desenhada no T0 (copiada para os demais); eixo automático."""
     s = Sessao()
     for nome, dados in fantoma.arquivos.items():
         s.adicionar_arquivo(nome, dados)

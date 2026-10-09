@@ -3,7 +3,7 @@
 Fluxo para estudos de validação: na ferramenta web, desenhe as ROIs e baixe
 o protocolo (.json). No computador, com os mesmos DICOMs numa pasta::
 
-    mnp-gastrico estudo.json --pasta dicoms/ --csv resultado.csv --laudo laudo.html
+    mnp-gastrico estudo.json --pasta dicoms/ --csv resultado.csv --laudo laudo.html --faixa-etaria adulto
 
 ou, para vários exames::
 
@@ -22,7 +22,7 @@ import sys
 from pathlib import Path
 
 from .. import __version__, versoes
-from . import relatorio
+from . import referencias, relatorio
 from .calculo import calcular_resultados
 from .sessao import ErroSessao, Sessao
 
@@ -66,6 +66,8 @@ def main(argv=None) -> int:
     ap.add_argument("--pasta", type=Path, required=True, help="pasta com os DICOMs (busca em subpastas)")
     ap.add_argument("--csv", type=Path, help="CSV consolidado (uma linha por tempo de cada exame)")
     ap.add_argument("--laudo", type=Path, help="laudo HTML (só com um protocolo)")
+    ap.add_argument("--faixa-etaria", choices=["adulto", "pediatrico"], help="referência usada no laudo")
+    ap.add_argument("--refeicao", choices=["ovo", "aveia"], default="ovo", help="refeição, no pediátrico")
     args = ap.parse_args(argv)
 
     if args.laudo and len(args.protocolos) > 1:
@@ -90,7 +92,8 @@ def main(argv=None) -> int:
             saida.append({"protocolo": caminho.name, "versao_nucleo": __version__, **d})
         print(f"{caminho.name}: " + "; ".join(f"{l.rotulo} {l.retencao:.1f}%" for l in linhas))
         if args.laudo:
-            html = relatorio.laudo_html(linhas, mv, versoes(), sessao._tempos_info())
+            ref = referencias.obter(args.faixa_etaria, args.refeicao)
+            html = relatorio.laudo_html(linhas, mv, versoes(), sessao._tempos_info(), referencia=ref)
             args.laudo.write_text(
                 f'<!doctype html><html lang="pt-BR"><meta charset="utf-8"><title>Laudo</title><body>{html}</body></html>',
                 encoding="utf-8",

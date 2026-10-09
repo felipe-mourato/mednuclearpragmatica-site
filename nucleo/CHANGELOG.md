@@ -2,6 +2,24 @@
 
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e as versões seguem [versionamento semântico](https://semver.org/lang/pt-BR/). Toda entrada diz se algum número calculado muda em relação à versão anterior.
 
+## [0.2.0] - 2026-10-09
+
+Muda números em relação à 0.1.0: proximal, distal e as retenções regionais. A retenção total não muda.
+
+### Alterado
+
+- **Divisão proximal/distal pelo eixo longitudinal** (Silver et al., Neurogastroenterol Motil 2022, que segue Orthey et al., J Nucl Med 2018). O comprimento do eixo é dividido ao meio e o corte perpendicular nesse ponto separa as metades. Cada pixel da ROI vai para a metade do ponto do eixo mais próximo dele (no artigo, a ROI proximal é desenhada à mão a partir do corte). Substitui a divisão por componentes principais em metades de mesma área da 0.1.0.
+- **Eixo longitudinal automático** (no artigo, é traçado à mão): linha média geodésica da ROI. As extremidades são os dois pixels da ROI mais distantes entre si por dentro dela (topo do fundo e extremidade distal); o caminho entre elas tem custo por passo proporcional a 1/d², em que d é a distância à borda da ROI, e por isso segue o meio do estômago; as pontas que desviam para os cantos são aparadas e prolongadas em linha reta até a borda. Depende só do contorno da ROI, sem limiar de contagem. O usuário pode corrigir o eixo à mão em qualquer tempo e voltar ao automático.
+- **Contagem distal = total − proximal**, em média geométrica, como no artigo. Proximal + distal = total em todas as linhas.
+- O eixo é espelhado na posterior, como a ROI, e acompanha a ROI quando ela é arrastada. Redesenhar a ROI de um tempo descarta a correção manual do eixo daquele tempo.
+- Protocolo de reprodução no formato 2, com o eixo usado em cada tempo e a origem (automático ou manual); o lote usa exatamente esse eixo, mesmo que o algoritmo automático mude em versões futuras. Protocolos da 0.1.0 são recusados com mensagem clara.
+
+### Incluído
+
+- Razão proximal/distal (PDCR), marcada como não avaliável com retenção abaixo de 5% (Silver 2022), e medianas do artigo no laudo, para contexto.
+- Faixa etária nos resultados: adulto (Tougas 2000, percentil 95) ou pediátrico (MacLean e El-Chammas, J Nucl Med Technol 2024, Tabela 2, com refeição de clara de ovo/Ensure Plus ou aveia). Coluna de referência na tabela, no CSV, no Excel e no laudo; a comparação usa o tempo de referência mais próximo, até 15 min.
+- Comprimento do eixo em cm quando o DICOM traz PixelSpacing (0028,0030).
+
 ## [0.1.0] - 2026-10-09
 
 Primeira versão. Porta para Python a lógica do app de referência "Esvaziamento Gástrico — Cintilografia" (React/TypeScript).
