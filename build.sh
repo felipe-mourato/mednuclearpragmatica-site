@@ -111,6 +111,14 @@ for pasta in ferramentas/*/; do
     echo ">> Ferramenta: ${nome}"
     rm -rf "_site/ferramentas/${nome}"
     cp -R "${pasta}" "_site/ferramentas/${nome}"
+    # Impressão digital no endereço do JavaScript e do CSS: a cada versão
+    # nova o navegador baixa os arquivos novos, em vez de usar o cache.
+    for arq in app.js estilo.css; do
+      if [ -f "_site/ferramentas/${nome}/${arq}" ]; then
+        h="$(sha256sum "_site/ferramentas/${nome}/${arq}" | cut -c1-12)"
+        sed -i "s|\"${arq}\"|\"${arq}?v=${h}\"|g" "_site/ferramentas/${nome}/index.html"
+      fi
+    done
   fi
 done
 rm -rf "${VENV}"
