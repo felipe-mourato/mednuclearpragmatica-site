@@ -1,0 +1,9 @@
+# Pacotes Python que as ferramentas web carregam do próprio site (mesma origem).
+# O build.sh baixa cada um com hash conferido (pip --require-hashes).
+# NumPy NÃO entra aqui: vem compilado pelo Pyodide, na versão travada em cada
+# ferramenta (constante PYODIDE_VERSAO no app.js).
+#
+# Para atualizar o pydicom: troque a versão, pegue o novo SHA-256 em
+# https://pypi.org/project/pydicom/#files (arquivo .whl) e rode os testes.
+pydicom==3.0.2 \
+    --hash=sha256:abf971a5440f84dbaf42c4b6758e30e62480902584f8b270b9a5d146e278a07b

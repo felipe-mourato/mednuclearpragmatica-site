@@ -1,0 +1,14 @@
+{
+  "title": "mnp-nucleo: núcleo de processamento das ferramentas de medicina nuclear da MedNuclear Pragmática",
+  "upload_type": "software",
+  "description": "<p>Pacote Python (pydicom + NumPy) com os cálculos das ferramentas web de medicina nuclear da MedNuclear Pragmática, começando pela cintilografia de esvaziamento gástrico. O mesmo código roda no navegador (Pyodide) e em lote no computador. Ferramenta de pesquisa e ensino, ainda não validada para uso clínico.</p><p>O pacote está na pasta <code>nucleo/</code>; o histórico de versões, em <code>nucleo/CHANGELOG.md</code>.</p>",
+  "creators": [
+    { "name": "Mourato, Felipe" }
+  ],
+  "license": "MIT",
+  "language": "por",
+  "keywords": ["medicina nuclear", "cintilografia", "esvaziamento gástrico", "DICOM", "Pyodide"],
+  "related_identifiers": [
+    { "identifier": "https://mednuclearpragmatica.com.br/ferramentas/", "relation": "isDocumentedBy", "resource_type": "other" }
+  ]
+}

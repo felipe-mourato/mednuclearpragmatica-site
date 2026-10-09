@@ -6,6 +6,14 @@
 *.quarto_ipynb
 _freeze/
 
+# Núcleo Python (gerados no build e nos testes)
+/.nucleo-venv/
+nucleo/.venv/
+nucleo/dist/
+nucleo/build/
+*.egg-info/
+.pytest_cache/
+
 # Temporários
 /_estrutura/cartoes/_temp.html
 __pycache__/

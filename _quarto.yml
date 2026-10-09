@@ -7,6 +7,11 @@
 project:
   type: website
   output-dir: _site
+  # O que o Quarto transforma em página. A pasta nucleo/ (pacote Python das
+  # ferramentas) fica de fora: o build.sh cuida dela.
+  render:
+    - "*.qmd"
+    - "!nucleo/"
   # Arquivos copiados para o site sem passar pelo Quarto.
   resources:
     - robots.txt

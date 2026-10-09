@@ -17,3 +17,18 @@
 
 /assets/logos/*
   Access-Control-Allow-Origin: *
+
+# Ferramentas: o núcleo Python é carregado do próprio site.
+# O manifesto muda a cada publicação; as wheels ficam em pastas com o hash
+# do conteúdo, então podem ficar no cache por um ano.
+/ferramentas/_pacotes/pacotes.json
+  Cache-Control: no-cache
+
+/ferramentas/_pacotes/w/*
+  Cache-Control: public, max-age=31536000, immutable
+
+# Páginas das ferramentas: o navegador só pode conversar com o próprio site
+# e com o CDN do Pyodide (cdn.jsdelivr.net). Isso garante, pelo navegador,
+# que nenhuma imagem é enviada a outro servidor.
+/ferramentas/esvaziamento-gastrico/*
+  Content-Security-Policy: default-src 'self'; script-src 'self' https://cdn.jsdelivr.net 'wasm-unsafe-eval' 'unsafe-eval'; connect-src 'self' https://cdn.jsdelivr.net; style-src 'self' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'none'; frame-ancestors 'self'
