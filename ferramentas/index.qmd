@@ -5,9 +5,9 @@
 # Para ativar: apague `draft: true` e tire o # das linhas de Ferramentas
 # no menu, em _quarto.yml.
 #
-# As ferramentas NÃO moram neste repositório. Cada uma tem repositório
-# próprio e endereço próprio (ex.: dmsa.mednuclearpragmatica.com.br).
-# Aqui entra só o cartão que aponta para ela.
+# Cada ferramenta mora em ferramentas/<exame>/ (HTML + JavaScript) e usa o
+# núcleo em Python da pasta nucleo/. O build.sh copia as duas coisas para o
+# site. Aqui entra o cartão que aponta para cada uma.
 #
 # Para acrescentar um cartão: abra ferramentas/ferramentas.yml.
 # =====================================================================
@@ -24,10 +24,10 @@ listing:
 ---
 
 ::: {.mnp-aviso role="note"}
-Ferramentas de pesquisa e ensino. Auxílio ao cálculo; a interpretação é de responsabilidade do médico nuclear. Processamento 100% local: nenhum dado sai do seu computador.
+Ferramentas de pesquisa e ensino, ainda não validadas para uso clínico. Auxílio ao cálculo; a interpretação é de responsabilidade do médico nuclear. Processamento 100% local: nenhum dado sai do seu computador.
 :::
 
 ::: {#lista-ferramentas}
 :::
 
-O código de cada ferramenta é aberto, e cada versão tem a fórmula e a referência de cada cálculo documentadas no próprio repositório. [a revisar]
+O código de cada ferramenta é aberto. Todo cálculo é feito por um núcleo em Python, testado automaticamente e com a fórmula e a referência de cada função documentadas; cada versão do núcleo aparece nos resultados e no laudo. [a revisar]

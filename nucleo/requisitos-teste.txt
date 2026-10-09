@@ -1,0 +1,6 @@
+# Ambiente dos testes do núcleo no build (bash build.sh).
+# pydicom igual ao das ferramentas web; NumPy na série do Pyodide 0.29.5 (2.2.x)
+# quando houver wheel para o Python da máquina de build.
+pydicom==3.0.2
+pytest==8.4.2
+openpyxl==3.1.5

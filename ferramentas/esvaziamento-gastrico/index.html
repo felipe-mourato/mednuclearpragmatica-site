@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Esvaziamento gástrico · MedNuclear Pragmática</title>
+<meta name="description" content="Cálculo de retenção e esvaziamento gástrico por média geométrica, com divisão proximal e distal. Processamento 100% local, no navegador.">
+<!-- Fora dos buscadores enquanto a seção Ferramentas for rascunho.
+     Ao ativar a seção (README, seção 6), troque por: index, follow -->
+<meta name="robots" content="noindex, nofollow">
+<meta property="og:title" content="Esvaziamento gástrico · Ferramentas MedNuclear Pragmática">
+<meta property="og:description" content="Retenção e esvaziamento gástrico a partir das imagens DICOM, no seu navegador.">
+<meta property="og:image" content="https://mednuclearpragmatica.com.br/assets/og/cartao-padrao.png">
+<meta name="theme-color" content="#F5F7FA" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0B1622" media="(prefers-color-scheme: dark)">
+<link rel="icon" href="/assets/favicon/favicon.svg" type="image/svg+xml">
+<link rel="icon" type="image/png" sizes="32x32" href="/assets/favicon/favicon-32.png">
+<link rel="apple-touch-icon" sizes="180x180" href="/assets/favicon/apple-touch-icon.png">
+<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+<link rel="stylesheet" href="/assets/marca/mnp-marca.css">
+<link rel="stylesheet" href="estilo.css">
+</head>
+<body>
+<a class="pular" href="#conteudo">Pular para a ferramenta</a>
+
+<header class="mnp-topo nao-imprime">
+  <a href="/" aria-label="MedNuclear Pragmática, página inicial">
+    <picture>
+      <source srcset="/assets/logos/mnp-horizontal-negativo.svg" media="(prefers-color-scheme: dark)">
+      <img src="/assets/logos/mnp-horizontal.svg" alt="MedNuclear Pragmática" width="200" height="36">
+    </picture>
+  </a>
+  <nav aria-label="Navegação do site"><a href="/ferramentas/">Ferramentas</a></nav>
+</header>
+<div class="mnp-termica nao-imprime" aria-hidden="true"></div>
+
+<main id="conteudo" class="pagina nao-imprime">
+  <header class="abertura">
+    <p class="mnp-eyebrow">Ferramenta · <span class="radiofarmaco">⁹⁹ᵐTc</span> · refeição sólida</p>
+    <h1>Esvaziamento gástrico</h1>
+    <p class="fina">Retenção e esvaziamento por média geométrica das projeções anterior e posterior, com divisão proximal e distal do estômago.</p>
+  </header>
+
+  <p class="mnp-aviso aviso-uso" role="note"><strong>Ferramenta de pesquisa e ensino, ainda não validada para uso clínico.</strong> Auxílio ao cálculo; a interpretação é de responsabilidade do médico nuclear. <strong>Processamento 100% local: nenhum dado sai do seu computador.</strong></p>
+
+  <!-- Tela de carregamento: o núcleo em Python roda no navegador (Pyodide) -->
+  <section id="carregamento" class="carregamento" aria-live="polite">
+    <h2>Preparando o núcleo de cálculo</h2>
+    <p class="carregamento-texto">Na primeira vez o navegador baixa o Python (cerca de 15 MB). Depois fica guardado e abre mais rápido. Nenhuma imagem é enviada: o download é só do programa.</p>
+    <div class="barra" role="progressbar" aria-label="Progresso do carregamento" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span></span></div>
+    <ol class="etapas-carga">
+      <li data-etapa="pyodide">Python no navegador (Pyodide <span data-versao-pyodide></span>)</li>
+      <li data-etapa="numpy">NumPy</li>
+      <li data-etapa="pacotes">pydicom e núcleo mnp-nucleo</li>
+      <li data-etapa="iniciar">Conferência do núcleo</li>
+    </ol>
+    <div class="erro-carga" hidden>
+      <p><strong>Não foi possível carregar o núcleo.</strong> <span data-erro-carga></span></p>
+      <p>Confira a conexão com a internet (necessária só para baixar o programa) e use um navegador atualizado (Chrome, Edge, Firefox ou Safari recentes).</p>
+      <button type="button" class="mnp-btn" data-acao="recarregar">Tentar de novo</button>
+    </div>
+  </section>
+
+  <!-- Ferramenta -->
+  <section id="ferramenta" hidden>
+    <nav class="passos" aria-label="Etapas">
+      <ol>
+        <li><button type="button" data-passo="0"><span class="num">1</span>Imagens</button></li>
+        <li><button type="button" data-passo="1"><span class="num">2</span>ROI</button></li>
+        <li><button type="button" data-passo="2"><span class="num">3</span>Segmentação</button></li>
+        <li><button type="button" data-passo="3"><span class="num">4</span>Resultados e laudo</button></li>
+      </ol>
+    </nav>
+
+    <!-- Passo 1 -->
+    <section class="passo" data-painel="0" aria-labelledby="t-passo-1">
+      <h2 id="t-passo-1">Imagens DICOM</h2>
+      <div class="zona-envio" tabindex="0" role="button" aria-describedby="envio-ajuda">
+        <p class="zona-titulo">Arraste os arquivos DICOM para cá ou clique para escolher</p>
+        <p id="envio-ajuda" class="zona-ajuda">Três ou mais tempos, cada um com a imagem anterior e a posterior, sem compressão. Arquivo com ANT e PÓS em dois quadros também serve.</p>
+        <input type="file" multiple hidden data-entrada-arquivos>
+      </div>
+      <p class="exemplo">Sem exame à mão? <button type="button" class="link" data-acao="fantoma">Carregar o fantoma de exemplo</button> (retenção conhecida: 100, 60, 30 e 8%).</p>
+      <div data-erros></div>
+      <div data-sugestoes></div>
+      <div data-tempos class="tempos"></div>
+      <div class="acoes">
+        <button type="button" class="mnp-btn" data-acao="limpar" hidden>Começar de novo</button>
+        <p class="validacao" data-validacao="0"></p>
+        <button type="button" class="mnp-btn mnp-btn--principal" data-ir="1">Desenhar as ROIs</button>
+      </div>
+    </section>
+
+    <!-- Passo 2 -->
+    <section class="passo" data-painel="1" aria-labelledby="t-passo-2" hidden>
+      <h2 id="t-passo-2">ROI do estômago</h2>
+      <div class="instrucoes">
+        <p>Desenhe à mão livre o contorno do estômago na imagem <strong>anterior</strong>; o polígono se fecha ao soltar. A primeira ROI vale para todos os tempos. Se o paciente se moveu, arraste a ROI daquele tempo ou desenhe outra.</p>
+        <p class="nota">Na posterior a ROI é espelhada: esquerda e direita trocam, superior e inferior ficam. Botão do meio (arrastar): brilho na vertical e contraste na horizontal. Botão direito: escala de cinza normal ou invertida. Ajustes de exibição não mudam as contagens.</p>
+      </div>
+      <div data-rois class="grade-tempos"></div>
+      <div class="acoes">
+        <button type="button" class="mnp-btn" data-ir="0">Voltar</button>
+        <p class="validacao" data-validacao="1"></p>
+        <button type="button" class="mnp-btn mnp-btn--principal" data-ir="2">Ver a segmentação</button>
+      </div>
+    </section>
+
+    <!-- Passo 3 -->
+    <section class="passo" data-painel="2" aria-labelledby="t-passo-3" hidden>
+      <h2 id="t-passo-3">Segmentação proximal e distal</h2>
+      <div class="instrucoes">
+        <p>Cada ROI foi dividida ao longo do eixo principal do estômago em duas metades com o mesmo número de pixels: <span class="chave chave-prox">proximal</span> (superior) e <span class="chave chave-dist">distal</span> (inferior). Arraste a ROI na anterior para reposicionar; a divisão é refeita na hora.</p>
+      </div>
+      <div data-segmentacao class="grade-tempos"></div>
+      <div class="acoes">
+        <button type="button" class="mnp-btn" data-ir="1">Voltar e redesenhar</button>
+        <p class="validacao" data-validacao="2"></p>
+        <button type="button" class="mnp-btn mnp-btn--principal" data-ir="3">Calcular</button>
+      </div>
+    </section>
+
+    <!-- Passo 4 -->
+    <section class="passo" data-painel="3" aria-labelledby="t-passo-4" hidden>
+      <h2 id="t-passo-4">Resultados</h2>
+      <div class="parametros">
+        <label class="caixa"><input type="checkbox" data-decaimento checked> Correção de decaimento</label>
+        <label class="campo">Meia-vida (h) <input type="text" inputmode="decimal" value="6,0067" data-meia-vida size="7"></label>
+        <span class="campo-nota">⁹⁹ᵐTc: 6,0067 h</span>
+      </div>
+      <p class="erro" data-erro-resultados hidden></p>
+      <div class="tabela-rolagem"><table class="resultados" data-tabela></table></div>
+      <ul class="notas" data-notas></ul>
+      <figure class="figura-curva">
+        <figcaption><span class="mnp-eyebrow">Curva de retenção</span></figcaption>
+        <div class="legenda" aria-hidden="true">
+          <span><i class="sw sw-1"></i>Total</span><span><i class="sw sw-2"></i>Proximal</span><span><i class="sw sw-3"></i>Distal</span>
+        </div>
+        <div data-curva></div>
+      </figure>
+      <div class="exportar">
+        <button type="button" class="mnp-btn" data-exportar="csv">Baixar CSV</button>
+        <button type="button" class="mnp-btn" data-exportar="xlsx">Baixar Excel</button>
+        <button type="button" class="mnp-btn" data-exportar="protocolo" title="ROIs, tempos e arquivos, para refazer o cálculo em lote no computador">Baixar protocolo (.json)</button>
+      </div>
+
+      <section class="bloco-laudo" aria-labelledby="t-laudo">
+        <h2 id="t-laudo">Laudo de processamento</h2>
+        <div class="laudo-controles">
+          <label class="campo campo-largo">Identificação do exame (opcional, só aparece no laudo impresso) <input type="text" data-identificacao maxlength="120" autocomplete="off"></label>
+          <button type="button" class="mnp-btn mnp-btn--principal" data-acao="imprimir">Imprimir ou salvar PDF</button>
+        </div>
+        <div class="laudo-previa" data-laudo></div>
+      </section>
+
+      <div class="acoes">
+        <button type="button" class="mnp-btn" data-ir="2">Voltar</button>
+      </div>
+    </section>
+  </section>
+</main>
+
+<div id="area-impressao" aria-hidden="true"></div>
+
+<footer class="rodape nao-imprime">
+  <p>MedNuclear Pragmática · por Felipe Mourato</p>
+  <p data-versoes>Núcleo carregando…</p>
+  <p>Código aberto: <a href="https://github.com/felipe-mourato/mednuclearpragmatica-site/tree/main/nucleo">núcleo em Python</a> · <a href="https://github.com/felipe-mourato/mednuclearpragmatica-site/blob/main/nucleo/CHANGELOG.md">histórico de versões</a></p>
+</footer>
+
+<!-- Menu do botão direito sobre as imagens -->
+<div class="menu-contexto" role="menu" hidden>
+  <button type="button" role="menuitemradio" data-cinza="normal">Escala de cinza</button>
+  <button type="button" role="menuitemradio" data-cinza="invertida">Cinza invertida</button>
+  <hr>
+  <button type="button" role="menuitem" data-cinza="resetar">Restaurar brilho e contraste</button>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>

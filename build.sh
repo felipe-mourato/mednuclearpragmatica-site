@@ -7,7 +7,8 @@
 #   Diretório de saída:    _site
 #
 # O script baixa uma versão fixa do Quarto para Linux, confere a
-# assinatura (SHA-256) do arquivo, renderiza o site e deixa tudo em _site.
+# assinatura (SHA-256) do arquivo, renderiza o site, testa e empacota o
+# núcleo Python das ferramentas e deixa tudo em _site.
 # Não usa GitHub Actions nem chaves secretas.
 #
 # Para atualizar o Quarto: troque QUARTO_VERSION por outra versão estável
@@ -67,8 +68,56 @@ find _site -name '*.html' -size -200c | while read -r f; do
   fi
 done
 
+# ---------------------------------------------------------------------
+# Ferramentas (ferramentas/<exame>/) e o núcleo Python (nucleo/)
+#
+# 1. Testa o núcleo (pytest). Se algum teste falhar, o site NÃO é
+#    publicado. Para pular numa emergência: variável de ambiente
+#    PULAR_TESTES_NUCLEO=1 no Cloudflare (não recomendado).
+# 2. Gera a wheel do núcleo e baixa o pydicom com hash conferido, em
+#    _site/ferramentas/_pacotes/ (mesma origem das ferramentas).
+# 3. Copia cada pasta ferramentas/<exame>/ que tenha index.html.
+# Exige python3 (já vem na imagem de build do Cloudflare Pages).
+# ---------------------------------------------------------------------
+if ! command -v python3 >/dev/null 2>&1; then
+  echo "ERRO: python3 não encontrado; é necessário para o núcleo das ferramentas." >&2
+  exit 1
+fi
+VENV=".nucleo-venv"
+echo ">> Preparando Python para o núcleo ($(python3 --version))"
+rm -rf "${VENV}"
+python3 -m venv "${VENV}"
+PY="${VENV}/bin/python"
+"${PY}" -m pip install --quiet --disable-pip-version-check --upgrade pip
+
+if [ "${PULAR_TESTES_NUCLEO:-0}" = "1" ]; then
+  echo ">> ATENÇÃO: testes do núcleo pulados (PULAR_TESTES_NUCLEO=1)"
+else
+  echo ">> Testando o núcleo"
+  # NumPy da mesma série do Pyodide quando possível; senão, o mais recente.
+  "${PY}" -m pip install --quiet --disable-pip-version-check "numpy==2.2.5" \
+    || "${PY}" -m pip install --quiet --disable-pip-version-check "numpy>=1.26"
+  "${PY}" -m pip install --quiet --disable-pip-version-check -r nucleo/requisitos-teste.txt
+  "${PY}" -m pip install --quiet --disable-pip-version-check --no-deps ./nucleo
+  (cd nucleo && "../${PY}" -m pytest -q -p no:cacheprovider)
+fi
+
+echo ">> Empacotando o núcleo para as ferramentas"
+"${PY}" _estrutura/empacotar_nucleo.py --python "${PY}" --saida _site/ferramentas/_pacotes
+
+for pasta in ferramentas/*/; do
+  nome="$(basename "${pasta}")"
+  if [ -f "${pasta}index.html" ]; then
+    echo ">> Ferramenta: ${nome}"
+    rm -rf "_site/ferramentas/${nome}"
+    cp -R "${pasta}" "_site/ferramentas/${nome}"
+  fi
+done
+rm -rf "${VENV}"
+
 # Conferências mínimas antes de publicar
-for f in _site/index.html _site/sitemap.xml _site/404.html _site/robots.txt; do
+for f in _site/index.html _site/sitemap.xml _site/404.html _site/robots.txt \
+         _site/ferramentas/_pacotes/pacotes.json _site/ferramentas/esvaziamento-gastrico/index.html; do
   if [ ! -s "$f" ]; then
     echo "ERRO: ${f} não foi gerado." >&2
     exit 1

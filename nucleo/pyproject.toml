@@ -1,0 +1,47 @@
+# Pacote mnp-nucleo: núcleo de processamento das ferramentas da
+# MedNuclear Pragmática. Roda igual no navegador (Pyodide) e no computador.
+#
+# A versão fica em src/mnp_nucleo/__init__.py (__version__). Para lançar
+# uma versão nova, siga a seção "Lançar uma versão" do nucleo/README.md.
+
+[build-system]
+requires = ["flit_core==3.12.0"]
+build-backend = "flit_core.buildapi"
+
+[project]
+name = "mnp-nucleo"
+dynamic = ["version", "description"]
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "Felipe Mourato" }]
+keywords = ["medicina nuclear", "cintilografia", "DICOM", "esvaziamento gástrico"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Intended Audience :: Science/Research",
+    "Intended Audience :: Healthcare Industry",
+    "Topic :: Scientific/Engineering :: Medical Science Apps.",
+    "Natural Language :: Portuguese (Brazilian)",
+]
+# Faixas largas de propósito: o Pyodide traz a sua própria versão do NumPy.
+# A versão exata usada em cada cálculo aparece no laudo.
+dependencies = [
+    "numpy>=1.26",
+    "pydicom>=3.0,<4",
+]
+
+[project.optional-dependencies]
+teste = ["pytest>=8", "openpyxl>=3.1"]
+
+[project.urls]
+Site = "https://mednuclearpragmatica.com.br/ferramentas/"
+Codigo = "https://github.com/felipe-mourato/mednuclearpragmatica-site/tree/main/nucleo"
+
+[project.scripts]
+mnp-gastrico = "mnp_nucleo.gastrico.lote:main"
+
+[tool.flit.module]
+name = "mnp_nucleo"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

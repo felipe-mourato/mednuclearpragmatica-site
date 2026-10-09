@@ -142,13 +142,15 @@ As duas páginas estão prontas, mas fora do menu e marcadas como rascunho.
 2. Abra `ferramentas/index.qmd` (ou `cursos/index.qmd`) e apague a linha `draft: true`.
 3. Confira com `quarto preview` e publique.
 
-**Para acrescentar um cartão de ferramenta:** abra `ferramentas/ferramentas.yml`. O arquivo explica os campos e traz um cartão de exemplo comentado. Copie o bloco de exemplo, cole no fim, apague o `# ` do início de cada linha, preencha e apague a linha `[]` (ela só existe enquanto a lista está vazia). Se a ferramenta ainda não tiver artigo de validação, apague a linha `validacao:`; o cartão mostra "Artigo ainda não publicado".
+**Para acrescentar um cartão de ferramenta:** abra `ferramentas/ferramentas.yml`. O arquivo explica os campos e traz um cartão de exemplo comentado. Copie o bloco de exemplo, cole no fim, apague o `# ` do início de cada linha e preencha. Se a ferramenta ainda não tiver artigo de validação, apague a linha `validacao:`; o cartão mostra "Artigo ainda não publicado". O cartão do esvaziamento gástrico já está lá.
+
+**Ao ativar a seção Ferramentas**, abra também `ferramentas/esvaziamento-gastrico/index.html` e troque `noindex, nofollow` por `index, follow` (a ferramenta fica fora do Google enquanto a seção é rascunho, mas o endereço já funciona para quem tiver o link).
 
 **Para acrescentar um cartão de curso:** o mesmo, em `cursos/cursos.yml`, com o link da página da Hotmart no campo `endereco`.
 
 Cuidado com o alinhamento nesses arquivos: as linhas de cada bloco começam com dois espaços, e o texto vai entre aspas. Se o `quarto preview` mostrar um erro com "YAML", quase sempre é um espaço a mais ou a menos.
 
-As ferramentas em si não moram aqui: cada uma tem repositório e endereço próprios (por exemplo, `dmsa.mednuclearpragmatica.com.br`). Este site só aponta para elas.
+As ferramentas moram neste mesmo repositório, em `ferramentas/<exame>/`, e o núcleo de cálculo em Python, em `nucleo/`. Como funcionam, como testar e como lançar uma versão: seção 11.
 
 ## 7. Newsletter (desativada)
 
@@ -185,16 +187,60 @@ Os logos ficam em `https://mednuclearpragmatica.com.br/assets/logos/`. Se mudar 
 | `papers/`, `guias/`, `casos/`, `fundamentos/` | As séries. O `index.qmd` de cada uma é a listagem; cada subpasta é um post |
 | `sobre.qmd`, `todos.qmd`, `404.qmd` | Páginas fixas (`todos.qmd` lista todos os textos e gera o feed RSS do site) |
 | `newsletter.qmd` | Página da newsletter, desativada (rascunho) |
-| `ferramentas/`, `cursos/` | Seções para depois (rascunho) |
+| `ferramentas/`, `cursos/` | Seções para depois (rascunho). `ferramentas/esvaziamento-gastrico/` é a ferramenta (HTML, CSS e JavaScript) |
+| `nucleo/` | Núcleo de cálculo das ferramentas: pacote Python com testes, versão e histórico (seção 11) |
+| `CITATION.cff`, `.zenodo.json` | Como citar o núcleo e os dados do DOI no Zenodo (seção 12) |
 | `_modelos/` | Modelos comentados de post. Não aparecem no site |
 | `_quarto.yml` | Configuração geral: menu, rodapé, endereço do site |
 | `estilos/` | Tema do site (cores e tipografia) e o estilo de referências Vancouver |
 | `assets/` | Logos, favicon, cartões de compartilhamento e o CSS da marca |
 | `_estrutura/` | Peças internas do site (cabeçalho dos artigos, listagens, cartões). Raramente precisa mexer |
-| `build.sh` | Script que o Cloudflare roda para gerar o site |
+| `build.sh` | Script que o Cloudflare roda para gerar o site, testar o núcleo e montar as ferramentas |
 | `_site/` | Site gerado. Não vai para o GitHub; é refeito a cada publicação |
 
 ## 10. Manutenção
 
 - **Atualizar o Quarto do site:** em `build.sh`, troque o número em `QUARTO_VERSION` por uma versão estável recente (<https://quarto.org/docs/download/>), instale a mesma versão no Mac e confira com `quarto preview` antes de publicar.
-- **Testar o build como o Cloudflare faz** (opcional): o `build.sh` foi feito para Linux, então no Mac use só `quarto render` para conferir se o site gera sem erros.
+- **Testar o build como o Cloudflare faz** (opcional): o `build.sh` foi feito para Linux, então no Mac use só `quarto render` para conferir se o site gera sem erros, e os testes do núcleo (seção 11) para conferir os cálculos.
+- **Atualizar o Pyodide das ferramentas:** em `ferramentas/esvaziamento-gastrico/app.js`, troque `PYODIDE_VERSAO`, abra a ferramenta publicada e processe o fantoma de exemplo; a retenção deve dar 100, 60, 30 e 8%.
+
+## 11. Ferramentas e o núcleo em Python
+
+Cada ferramenta tem duas partes:
+
+- **A interface** (`ferramentas/<exame>/`): HTML, CSS e um JavaScript pequeno que só mostra imagens, recebe as ROIs desenhadas e exibe os resultados.
+- **O núcleo** (`nucleo/`): pacote Python (pydicom + NumPy) que faz todo o cálculo, da leitura dos pixels e do rescale ao laudo. No navegador ele roda pelo Pyodide (Python compilado para o navegador); no computador, roda igual, para estudos de validação em lote.
+
+Nada é enviado a servidor: o navegador baixa o programa (Pyodide do CDN jsDelivr, em versão travada; núcleo e pydicom do próprio site) e processa as imagens localmente. O `_headers` reforça isso: a página da ferramenta só pode se comunicar com o próprio site e com o CDN do Pyodide.
+
+**O que o build faz com isso** (`build.sh`, depois do Quarto): roda os testes do núcleo (se um falhar, o site não é publicado), gera o pacote do núcleo, baixa o pydicom conferindo o hash e copia as ferramentas para o site.
+
+**Testar o núcleo no Mac** (Terminal do VS Code, na pasta do projeto, uma vez só para instalar):
+
+```
+cd nucleo
+python3 -m venv .venv
+.venv/bin/pip install -e ".[teste]"
+```
+
+Depois, sempre que quiser rodar os testes:
+
+```
+cd nucleo
+.venv/bin/python -m pytest
+```
+
+Para conferir a ferramenta sem exame próprio, use o botão "Carregar o fantoma de exemplo": a retenção esperada é 100, 60, 30 e 8%.
+
+**Lançar uma versão do núcleo:** passo a passo em `nucleo/README.md`. Em resumo: mude o número em `nucleo/src/mnp_nucleo/__init__.py`, registre em `nucleo/CHANGELOG.md`, atualize `CITATION.cff` e o campo `versao` do cartão em `ferramentas/ferramentas.yml`, publique e crie a *release* no GitHub (seção 12).
+
+## 12. DOI no Zenodo (uma vez só)
+
+Cada versão do núcleo pode ter um DOI próprio, para citar nos artigos de validação.
+
+1. Entre em <https://zenodo.org> com a conta do GitHub (**Log in > GitHub**).
+2. No menu do seu nome, **GitHub**. Na lista de repositórios, ligue a chave de `felipe-mourato/mednuclearpragmatica-site` (o repositório precisa ser público).
+3. A cada versão: no GitHub, na página do repositório, **Releases > Draft a new release**. Em *Choose a tag*, digite `nucleo-v0.1.0` (o número da versão) e escolha *Create new tag*. Título: `mnp-nucleo 0.1.0`. Na descrição, cole a parte do `nucleo/CHANGELOG.md` daquela versão. Clique em **Publish release**.
+4. Em alguns minutos o Zenodo arquiva o repositório e gera o DOI. Ele aparece em **Upload** no Zenodo. O Zenodo também cria um DOI "de conceito", que aponta sempre para a versão mais recente.
+
+Os dados do registro (título, autor, licença) vêm de `.zenodo.json`. Para incluir seu ORCID, acrescente `"orcid": "0000-0000-0000-0000"` ao lado do nome em `creators`, e o mesmo em `CITATION.cff` (linha `orcid:` abaixo de `given-names`). O Zenodo arquiva o repositório inteiro, mas a licença MIT de `nucleo/LICENSE` vale só para o código do núcleo e das ferramentas, não para os textos do site.

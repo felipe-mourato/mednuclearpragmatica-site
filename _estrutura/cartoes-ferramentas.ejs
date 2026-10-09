@@ -1,7 +1,7 @@
 <%
 // Cartões da página Ferramentas. Os dados vêm de ferramentas/ferramentas.yml.
 // Atenção: não deixe linhas em branco nem recuo dentro do HTML (o Quarto lê como Markdown).
-const host = (u) => { try { return new URL(u).host; } catch (e) { return u; } };
+const host = (u) => { try { return new URL(u).host; } catch (e) { return ''; } };
 %>
 <% if (items.length === 0) { %>
 <p class="mnp-vazio">Nenhuma ferramenta publicada ainda.</p>
@@ -13,7 +13,7 @@ const host = (u) => { try { return new URL(u).host; } catch (e) { return u; } };
 <h3 class="mnp-cartao__titulo listing-title"><%= item.title %></h3>
 <% if (item.description) { %><p class="mnp-cartao__texto listing-description"><%= item.description %></p><% } %>
 <dl class="mnp-cartao__dados"><% if (item.versao) { %><div><dt>Versão</dt><dd><%= item.versao %></dd></div><% } %><div><dt>Validação</dt><dd><% if (item.validacao) { %><a href="<%- item.validacao %>" rel="noopener">Artigo de validação</a><% } else { %>Artigo ainda não publicado<% } %></dd></div></dl>
-<% if (item.endereco) { %><p class="mnp-cartao__acao"><a class="mnp-btn mnp-btn--principal" href="<%- item.endereco %>">Abrir a ferramenta<span class="visually-hidden"> <%= item.title %></span></a><span class="mnp-cartao__host"><%= host(item.endereco) %></span></p><% } %>
+<% if (item.endereco) { %><p class="mnp-cartao__acao"><a class="mnp-btn mnp-btn--principal" href="<%- item.endereco %>">Abrir a ferramenta<span class="visually-hidden"> <%= item.title %></span></a><% if (host(item.endereco)) { %><span class="mnp-cartao__host"><%= host(item.endereco) %></span><% } %></p><% } %>
 </li>
 <% } %>
 </ul>

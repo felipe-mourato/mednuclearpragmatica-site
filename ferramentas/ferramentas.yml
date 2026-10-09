@@ -14,7 +14,9 @@
 #   exame        exame e radiofármaco, com sobrescrito (⁹⁹ᵐTc-DMSA)
 #   description  o que ela calcula, em uma ou duas frases
 #   versao       versão publicada (a mesma que aparece no laudo da ferramenta)
-#   endereco     endereço da ferramenta (subdomínio)
+#   endereco     endereço da ferramenta. As ferramentas moram neste
+#                repositório, em ferramentas/<exame>/, então o endereço é
+#                /ferramentas/<exame>/
 #   validacao    link (de preferência o DOI) do artigo de validação.
 #                Se ainda não houver, apague a linha inteira.
 #
@@ -28,7 +30,11 @@
 #   exame: "⁹⁹ᵐTc-DMSA"
 #   description: "Função renal relativa a partir das ROIs renais e de fundo nas projeções anterior e posterior, com média geométrica."
 #   versao: "0.1.0"
-#   endereco: "https://dmsa.mednuclearpragmatica.com.br"
+#   endereco: "/ferramentas/dmsa/"
 #   validacao: "https://doi.org/10.0000/exemplo"
 
-[]
+- title: "Cintilografia de esvaziamento gástrico"
+  exame: "⁹⁹ᵐTc, refeição sólida"
+  description: "Retenção e esvaziamento por média geométrica das projeções anterior e posterior, com correção de decaimento e divisão proximal e distal do estômago."
+  versao: "0.1.0"
+  endereco: "/ferramentas/esvaziamento-gastrico/"

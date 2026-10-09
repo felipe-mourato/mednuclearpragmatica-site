@@ -1,0 +1,21 @@
+# Como citar o núcleo das ferramentas (lido pelo GitHub e pelo Zenodo).
+# Atualize "version" e "date-released" a cada versão (nucleo/README.md).
+cff-version: 1.2.0
+message: "Se usar o núcleo ou as ferramentas em um trabalho, cite a versão usada (ela aparece no laudo)."
+type: software
+title: "mnp-nucleo: núcleo de processamento das ferramentas de medicina nuclear da MedNuclear Pragmática"
+abstract: "Pacote Python (pydicom + NumPy) com os cálculos das ferramentas web de medicina nuclear da MedNuclear Pragmática, começando pela cintilografia de esvaziamento gástrico. O mesmo código roda no navegador (Pyodide) e em lote no computador."
+authors:
+  - family-names: Mourato
+    given-names: Felipe
+version: 0.1.0
+date-released: 2026-10-09
+license: MIT
+repository-code: "https://github.com/felipe-mourato/mednuclearpragmatica-site"
+url: "https://mednuclearpragmatica.com.br/ferramentas/"
+keywords:
+  - medicina nuclear
+  - cintilografia
+  - esvaziamento gástrico
+  - DICOM
+  - Pyodide
