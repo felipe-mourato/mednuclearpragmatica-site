@@ -18,10 +18,12 @@ def comando(sessao, **kw):
 
 @pytest.fixture
 def sessao_pronta(fantoma):
-    """Sessão com o fantoma carregado e a ROI desenhada no T0 (copiada para os demais)."""
+    """Sessão com o fantoma carregado, ROI e eixo desenhados no T0 (copiados para os demais)."""
     s = Sessao()
     for nome, dados in fantoma.arquivos.items():
         s.adicionar_arquivo(nome, dados)
     r = comando(s, acao="desenhar_roi", tempo=0, pontos=fantoma.roi)
+    assert r["ok"], r
+    r = comando(s, acao="desenhar_eixo", tempo=0, pontos=fantoma.eixo)
     assert r["ok"], r
     return s

@@ -81,6 +81,7 @@ class ImagemDicom:
     sintaxe: str
     sha256: str
     avisos: list[str] = field(default_factory=list)
+    espacamento_mm: tuple[float, float] | None = None
 
     @property
     def n_quadros(self) -> int:
@@ -180,6 +181,20 @@ def _numero(ds, atributo: str, padrao: float) -> float:
         return float(valor)
     except (TypeError, ValueError):
         return padrao
+
+
+def _espacamento(ds) -> tuple[float, float] | None:
+    """Tamanho do pixel em mm (linha, coluna): PixelSpacing (0028,0030) ou ImagerPixelSpacing (0018,1164)."""
+    for atributo in ("PixelSpacing", "ImagerPixelSpacing"):
+        valor = ds.get(atributo, None)
+        try:
+            if valor is not None and len(valor) == 2:
+                a, b = float(valor[0]), float(valor[1])
+                if a > 0 and b > 0:
+                    return a, b
+        except (TypeError, ValueError):
+            continue
+    return None
 
 
 def adivinhar_vista(descricao: str | None) -> str:
@@ -300,6 +315,8 @@ def ler_dicom(dados) -> ImagemDicom:
         ds, (("SeriesDescription", "(0008,103E)"), ("ImageComments", "(0020,4000)"))
     )
 
+    espacamento = _espacamento(ds)
+
     avisos = []
     if hora_bruta is not None and data_hora is None:
         avisos.append(f"Horário em formato não reconhecido: {hora_bruta!r}.")
@@ -322,4 +339,5 @@ def ler_dicom(dados) -> ImagemDicom:
         sintaxe=str(sintaxe),
         sha256=hashlib.sha256(dados).hexdigest(),
         avisos=avisos,
+        espacamento_mm=espacamento,
     )

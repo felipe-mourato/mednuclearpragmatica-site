@@ -121,7 +121,8 @@
     if (!estado) return i === 0;
     if (i === 0) return true;
     if (i === 1) return !estado.validacao.arquivos;
-    return !estado.validacao.rois;
+    if (i === 2) return !estado.validacao.rois;
+    return !estado.validacao.eixos;
   }
 
   function irPara(i) {
@@ -147,7 +148,7 @@
     const v = estado?.validacao || {};
     $('[data-validacao="0"]').textContent = estado?.tempos.length ? v.arquivos || '' : '';
     $('[data-validacao="1"]').textContent = v.rois || '';
-    $('[data-validacao="2"]').textContent = v.rois || '';
+    $('[data-validacao="2"]').textContent = v.eixos || '';
     visores.clear();
     [renderArquivos, renderRois, renderSegmentacao, renderResultados][passo]();
   }
@@ -246,13 +247,14 @@
 
   // ----------------------------------------------------------- visor
   class Visor {
-    /* Mostra uma imagem com a ROI por cima e trata mouse/toque.
-       modo: 'desenho' (desenha e arrasta), 'arraste' (só arrasta) ou 'leitura'. */
+    /* Mostra uma imagem com a ROI (e o eixo) por cima e trata mouse/toque.
+       modo: 'desenho' (desenha e arrasta a ROI), 'eixo' (traça o eixo
+       longitudinal) ou 'leitura'. */
     constructor({ arquivo, tempo = null, vista = 'ant', modo = 'leitura', segmentacao = false, rotulo = '' }) {
       Object.assign(this, { arquivo, tempo, vista, modo, segmentacao });
       this.chave = `${arquivo.id}:${arquivo.quadro}`;
       this.el = document.createElement('div');
-      this.el.className = `visor ${modo === 'desenho' ? 'desenho' : ''}`;
+      this.el.className = `visor ${modo === 'desenho' || modo === 'eixo' ? 'desenho' : ''}`;
       this.el.style.aspectRatio = `${arquivo.colunas} / ${arquivo.linhas}`;
       this.el.setAttribute('role', 'img');
       this.el.setAttribute('aria-label', rotulo);
@@ -273,6 +275,12 @@
       const t = this.tempoEstado;
       if (!t) return null;
       return this.vista === 'ant' ? t.roi : t.roi_post;
+    }
+
+    get eixo() {
+      const t = this.tempoEstado;
+      if (!t) return null;
+      return this.vista === 'ant' ? t.eixo : t.eixo_post;
     }
 
     janela() {
@@ -301,13 +309,27 @@
         partes.push(`<${tag} class="roi-sombra" points="${pts}"/>`);
         partes.push(`<${tag} class="roi${rascunho ? ' rascunho' : ''}${realce ? ' realce' : ''}${comSeg}" points="${pts}"/>`);
       }
-      const seg = this.tempoEstado?.segmentacao;
-      if (this.segmentacao && seg && linha && !rascunho) {
-        const [a, b] = this.vista === 'ant' ? seg.linha_ant : seg.linha_post;
+      if (this.segmentacao) partes.push(...this.camadasEixo(linha && !rascunho));
+      this.svg.innerHTML = partes.join('');
+    }
+
+    // Eixo longitudinal, início (topo do fundo), meio e corte perpendicular.
+    camadasEixo(comCorte, eixo = this.eixo) {
+      const partes = [];
+      if (eixo && eixo.length >= 2) {
+        const pts = eixo.map((p) => `${p[0]},${p[1]}`).join(' ');
+        partes.push(`<polyline class="eixo-sombra" points="${pts}"/>`, `<polyline class="eixo" points="${pts}"/>`);
+      }
+      const seg = this.tempoEstado?.segmentacao?.[this.vista];
+      if (seg && comCorte) {
+        const [a, b] = seg.corte;
         partes.push(`<line class="divisao-sombra" x1="${a[0]}" y1="${a[1]}" x2="${b[0]}" y2="${b[1]}"/>`);
         partes.push(`<line class="divisao" x1="${a[0]}" y1="${a[1]}" x2="${b[0]}" y2="${b[1]}"/>`);
+        const r = Math.max(0.8, this.arquivo.colunas / 90);
+        partes.push(`<circle class="marco marco-inicio" cx="${seg.inicio[0]}" cy="${seg.inicio[1]}" r="${r}"/>`);
+        partes.push(`<circle class="marco marco-meio" cx="${seg.meio[0]}" cy="${seg.meio[1]}" r="${r}"/>`);
       }
-      this.svg.innerHTML = partes.join('');
+      return partes;
     }
 
     ponto(e) {
@@ -342,6 +364,11 @@
         if (e.button !== 0 || this.modo === 'leitura' || !this.tempoEstado) return;
         e.preventDefault();
         const p = this.ponto(e);
+        if (this.modo === 'eixo') {
+          this.acao = { tipo: 'eixo', pontos: [p] };
+          el.setPointerCapture(e.pointerId);
+          return;
+        }
         if (this.roi && cmd({ acao: 'toca_roi', tempo: this.tempo, x: p[0], y: p[1] }).toca) {
           this.acao = { tipo: 'arraste', inicio: p, dx: 0, dy: 0 };
           el.classList.add('arrastando');
@@ -373,12 +400,21 @@
             this.sobrepor(r.roi, { realce: true, linha: false });
             this.parceiro()?.sobrepor(r.roi_post, { realce: true, linha: false });
           });
+        } else if (a?.tipo === 'eixo') {
+          const p = this.ponto(e);
+          const u = a.pontos[a.pontos.length - 1];
+          if (Math.hypot(p[0] - u[0], p[1] - u[1]) >= 0.5) a.pontos.push(p);
+          this.agendar(() => {
+            const pts = this.roi ? [`<polygon class="roi-sombra" points="${this.roi.map((q) => q.join(',')).join(' ')}"/>`,
+              `<polygon class="roi com-seg" points="${this.roi.map((q) => q.join(',')).join(' ')}"/>`] : [];
+            this.svg.innerHTML = [...pts, ...this.camadasEixo(false, a.pontos)].join('');
+          });
         } else if (a?.tipo === 'desenho') {
           const p = this.ponto(e);
           const u = a.pontos[a.pontos.length - 1];
           if (Math.hypot(p[0] - u[0], p[1] - u[1]) >= 0.5) a.pontos.push(p);
           this.agendar(() => this.sobrepor(a.pontos, { rascunho: true }));
-        } else if (e.pointerType === 'mouse' && this.modo !== 'leitura' && this.roi) {
+        } else if (e.pointerType === 'mouse' && this.modo === 'desenho' && this.roi) {
           const p = this.ponto(e);
           this.agendar(() => {
             const toca = cmd({ acao: 'toca_roi', tempo: this.tempo, x: p[0], y: p[1] }).toca;
@@ -397,6 +433,12 @@
           const r = cmd({ acao: 'arrastar_roi', tempo: this.tempo, dx: a.dx, dy: a.dy, confirmar: a.dx !== 0 || a.dy !== 0 });
           if (!r.ok) avisar(r.erro);
           render();
+        } else if (a.tipo === 'eixo') {
+          if (a.pontos.length >= 2) {
+            const r = cmd({ acao: 'desenhar_eixo', tempo: this.tempo, pontos: a.pontos });
+            if (!r.ok) avisar(r.erro);
+          }
+          render();
         } else if (a.tipo === 'desenho') {
           if (a.pontos.length >= 3) {
             const r = cmd({ acao: 'desenhar_roi', tempo: this.tempo, pontos: a.pontos });
@@ -407,7 +449,7 @@
       };
       el.addEventListener('pointerup', terminar);
       el.addEventListener('pointercancel', terminar);
-      el.addEventListener('pointerleave', () => { if (!this.acao) { el.classList.remove('pega'); this.sobrepor(this.roi); } });
+      el.addEventListener('pointerleave', () => { if (!this.acao && this.modo === 'desenho') { el.classList.remove('pega'); this.sobrepor(this.roi); } });
     }
 
     parceiro() {
@@ -445,20 +487,23 @@
     const art = document.createElement('article');
     art.className = 'cartao-tempo';
     const temRoi = Boolean(t.roi);
+    const temEixo = Boolean(t.eixo);
+    const controles = comSegmentacao
+      ? `<span>
+          <span class="selo ${temEixo ? '' : 'selo--neutro'}">${temEixo ? 'eixo traçado' : 'sem eixo'}</span>
+          <button type="button" class="mnp-btn mnp-btn--pequeno" data-copiar-eixo="${t.indice}" ${temEixo ? '' : 'disabled'}>Usar este eixo em todos</button>
+        </span>`
+      : `<span>
+          <span class="selo ${temRoi ? '' : 'selo--neutro'}">${temRoi ? 'ROI definida' : 'sem ROI'}</span>
+          <button type="button" class="mnp-btn mnp-btn--pequeno" data-copiar="${t.indice}" ${temRoi ? '' : 'disabled'}>Usar esta ROI em todos</button>
+        </span>`;
     art.innerHTML = `
       <header>
         <h3>${t.rotulo} <span class="min">${esc(t.minutos_texto)} min</span></h3>
-        ${comSegmentacao ? '' : `<span>
-          <span class="selo ${temRoi ? '' : 'selo--neutro'}">${temRoi ? 'ROI definida' : 'sem ROI'}</span>
-          <button type="button" class="mnp-btn mnp-btn--pequeno" data-copiar="${t.indice}" ${temRoi ? '' : 'disabled'}>Usar esta ROI em todos</button>
-        </span>`}
+        ${controles}
       </header>`;
     if (t.bloqueio) {
       art.insertAdjacentHTML('beforeend', `<p class="erro">${esc(t.bloqueio)}</p>`);
-      return art;
-    }
-    if (comSegmentacao && !t.segmentacao) {
-      art.insertAdjacentHTML('beforeend', '<p class="erro">Sem segmentação: confira a ROI deste tempo.</p>');
       return art;
     }
     const par = document.createElement('div');
@@ -467,16 +512,19 @@
       const a = arquivoPorId(id);
       const quadro = a.n_quadros > 1 ? ` · quadro ${a.quadro + 1}` : '';
       const col = document.createElement('div');
-      col.innerHTML = `<p class="visor-rotulo">${vista === 'ant' ? (comSegmentacao ? 'Anterior' : 'Anterior · desenhe aqui') : 'Posterior · ROI espelhada'}${quadro}</p>`;
-      const modo = vista === 'ant' ? (comSegmentacao ? 'arraste' : 'desenho') : 'leitura';
+      const rotuloAnt = comSegmentacao ? 'Anterior · trace o eixo aqui' : 'Anterior · desenhe aqui';
+      const rotuloPost = comSegmentacao ? 'Posterior · ROI e eixo espelhados' : 'Posterior · ROI espelhada';
+      col.innerHTML = `<p class="visor-rotulo">${vista === 'ant' ? rotuloAnt : rotuloPost}${quadro}</p>`;
+      const modo = vista === 'ant' ? (comSegmentacao ? 'eixo' : 'desenho') : 'leitura';
       const v = new Visor({ arquivo: a, tempo: t.indice, vista, modo, segmentacao: comSegmentacao, rotulo: `${vista === 'ant' ? 'Anterior' : 'Posterior'} ${t.rotulo}` });
       visores.set(`${t.indice}:${vista}`, v);
       col.appendChild(v.el);
       par.appendChild(col);
     }
     art.appendChild(par);
-    if (comSegmentacao) {
-      art.insertAdjacentHTML('beforeend', `<p class="contagem-seg">Pixels na anterior: proximal ${t.segmentacao.pixels_proximal} · distal ${t.segmentacao.pixels_distal}</p>`);
+    if (comSegmentacao && t.segmentacao) {
+      const s = t.segmentacao;
+      art.insertAdjacentHTML('beforeend', `<p class="contagem-seg">Eixo ${esc(s.comprimento_texto)} · corte a ${esc(s.metade_texto)} do topo do fundo · pixels na anterior: proximal ${s.pixels_proximal}, distal ${s.pixels_distal}</p>`);
     }
     return art;
   }
@@ -492,12 +540,19 @@
 
   // ----------------------------------------------------------- passo 4
   function parametros() {
-    return { decaimento: $('[data-decaimento]').checked, meia_vida: $('[data-meia-vida]').value };
+    const faixa = $('[data-faixa-etaria]:checked')?.value || null;
+    return {
+      decaimento: $('[data-decaimento]').checked,
+      meia_vida: $('[data-meia-vida]').value,
+      faixa_etaria: faixa,
+      refeicao: faixa === 'pediatrico' ? $('[data-refeicao]').value : null,
+    };
   }
 
   function renderResultados() {
     const p = parametros();
     $('[data-meia-vida]').disabled = !p.decaimento;
+    $('[data-campo-refeicao]').hidden = p.faixa_etaria !== 'pediatrico';
     const r = cmd({ acao: 'resultados', ...p });
     const erro = $('[data-erro-resultados]');
     erro.hidden = r.ok;
@@ -509,12 +564,25 @@
       return;
     }
     const destaque = new Set(['retencao']);
+    const ref = r.referencia;
+    $('[data-nota-referencia]').textContent = ref
+      ? `Referência: ${ref.refeicao}. ${ref.nota} Fonte: ${ref.fonte}. Compara com o tempo de referência mais próximo, até ${ref.tolerancia_min} min.`
+      : 'Escolha para comparar os resultados com os valores de referência.';
     $('[data-tabela]').innerHTML = `
       <caption class="visually-hidden">Resultados por tempo. Núcleo mnp-nucleo ${esc(r.versao)}.</caption>
       <thead><tr>${r.colunas.map((c) => `<th scope="col" title="${esc(c.ajuda)}">${esc(c.titulo)}</th>`).join('')}</tr></thead>
       <tbody>${r.linhas.map((l) => `<tr>${r.colunas.map((c, i) => (i === 0
         ? `<th scope="row">${esc(l.textos[c.chave])}</th>`
         : `<td class="${destaque.has(c.chave) ? 'destaque' : ''}">${esc(l.textos[c.chave])}</td>`)).join('')}</tr>`).join('')}</tbody>`;
+    const comparaveis = r.linhas.filter((l) => l.referencia);
+    const blocoRef = $('[data-comparacao]');
+    blocoRef.hidden = !ref;
+    blocoRef.innerHTML = !ref ? '' : `
+      <h3>Comparação com a referência: ${esc(ref.grupo.toLowerCase())}</h3>
+      ${comparaveis.length ? `<div class="tabela-rolagem tabela-rolagem--ref"><table class="resultados tabela-ref">
+        <thead><tr><th scope="col">Tempo</th><th scope="col">Decorrido (min)</th><th scope="col">Retenção (%)</th><th scope="col">Esvaziamento (%)</th><th scope="col">Normal</th><th scope="col">Situação</th></tr></thead>
+        <tbody>${comparaveis.map((l) => `<tr><th scope="row">${esc(l.textos.rotulo)}</th><td>${esc(l.textos.minutos)}</td><td>${esc(l.textos.retencao)}</td><td>${esc(l.textos.esvaziamento)}</td><td class="criterio">${esc(l.referencia.criterio)}</td><td><span class="selo ${l.referencia.dentro ? 'selo--neutro' : ''}">${l.referencia.dentro ? 'dentro' : 'fora'}</span></td></tr>`).join('')}</tbody>
+      </table></div>` : `<p class="nota">Nenhum tempo do exame está a até ${ref.tolerancia_min} min dos tempos de referência (${ref.faixas.map((f) => `${f.minutos} min`).join(', ')}).</p>`}`;
     $('[data-notas]').innerHTML = [...r.notas, `Calculado com o núcleo mnp-nucleo ${r.versao}.`].map((n) => `<li>${esc(n)}</li>`).join('');
     $('[data-curva]').innerHTML = r.svg; // SVG gerado pelo núcleo, com textos escapados
     atualizarLaudo();
@@ -574,6 +642,7 @@
       else if (d.remover) { cmd({ acao: 'remover_arquivo', arquivo: d.remover }); render(); }
       else if (d.vista && d.arquivo) { cmd({ acao: 'definir_vista', arquivo: d.arquivo, vista: d.vista }); render(); }
       else if (d.copiar !== undefined) { cmd({ acao: 'copiar_roi', tempo: Number(d.copiar) }); render(); }
+      else if (d.copiarEixo !== undefined) { cmd({ acao: 'copiar_eixo', tempo: Number(d.copiarEixo) }); render(); }
       else if (d.exportar) baixar(d.exportar);
       else if (d.cinza && visorDoMenu) {
         const v = visorDoMenu;
@@ -596,7 +665,7 @@
       } else if (t.dataset.quadro !== undefined) {
         cmd({ acao: 'definir_quadro', arquivo: t.dataset.quadro, quadro: Number(t.value) });
         render();
-      } else if (t.matches('[data-decaimento], [data-meia-vida]')) {
+      } else if (t.matches('[data-decaimento], [data-meia-vida], [data-faixa-etaria], [data-refeicao]')) {
         renderResultados();
       } else if (t.matches('[data-identificacao]')) {
         atualizarLaudo();

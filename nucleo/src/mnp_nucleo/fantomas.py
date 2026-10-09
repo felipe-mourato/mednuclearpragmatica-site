@@ -85,13 +85,16 @@ def gerar_dicom(
 class Fantoma:
     """Fantoma de esvaziamento gástrico com resposta conhecida.
 
-    ``roi`` é o contorno exato do "estômago" na anterior; ``retencao`` e
+    ``roi`` é o contorno exato do "estômago" na anterior; ``eixo`` é o eixo
+    longitudinal (linha média vertical, do topo ao fundo do retângulo, cujo
+    meio separa exatamente as duas metades); ``retencao`` e
     ``distribuicao`` são os valores esperados (%) após correção de
     decaimento; ``minutos`` os tempos decorridos.
     """
 
     arquivos: dict[str, bytes]
     roi: list[tuple[float, float]]
+    eixo: list[tuple[float, float]]
     minutos: list[float]
     retencao: list[float]
     distribuicao: list[float]
@@ -142,4 +145,5 @@ def fantoma_esvaziamento(
             arquivos[f"T{i}_{vista}.dcm"] = gerar_dicom(img, dh, f"{rotulo} T{i}")
         multiframe[f"T{i}_antpost.dcm"] = gerar_dicom([imgs["ant"], imgs["post"]], dh, f"ANT/POST T{i}")
     roi = [(float(x0), float(y0)), (float(x0 + larg), float(y0)), (float(x0 + larg), float(y0 + alt)), (float(x0), float(y0 + alt))]
-    return Fantoma(arquivos, roi, list(minutos), list(retencao), list(distribuicao), multiframe)
+    eixo = [(float(x0 + larg / 2), float(y0)), (float(x0 + larg / 2), float(y0 + alt))]
+    return Fantoma(arquivos, roi, eixo, list(minutos), list(retencao), list(distribuicao), multiframe)
