@@ -1,0 +1,225 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cintilografia renal com DMSA · MedNuclear Pragmática</title>
+<meta name="description" content="Função renal relativa pela posterior e pela média geométrica, área relativa e função corrigida pelo tamanho, com fundo perirrenal. Processamento 100% local, no navegador.">
+<!-- Fora dos buscadores enquanto a seção Ferramentas for rascunho.
+     Ao ativar a seção (README, seção 6), troque por: index, follow -->
+<meta name="robots" content="noindex, nofollow">
+<meta property="og:title" content="Cintilografia renal com DMSA · Ferramentas MedNuclear Pragmática">
+<meta property="og:description" content="Função renal relativa a partir das imagens DICOM, no seu navegador.">
+<meta property="og:image" content="https://mednuclearpragmatica.com.br/assets/og/cartao-padrao.png">
+<meta name="theme-color" content="#F5F7FA" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0B1622" media="(prefers-color-scheme: dark)">
+<link rel="icon" href="/assets/favicon/favicon.svg" type="image/svg+xml">
+<link rel="icon" type="image/png" sizes="32x32" href="/assets/favicon/favicon-32.png">
+<link rel="apple-touch-icon" sizes="180x180" href="/assets/favicon/apple-touch-icon.png">
+<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+<link rel="stylesheet" href="/assets/marca/mnp-marca.css">
+<link rel="stylesheet" href="estilo.css">
+</head>
+<body>
+<a class="pular" href="#conteudo">Pular para a ferramenta</a>
+
+<header class="mnp-topo nao-imprime">
+  <a href="/" aria-label="MedNuclear Pragmática, página inicial">
+    <picture>
+      <source srcset="/assets/logos/mnp-horizontal-negativo.svg" media="(prefers-color-scheme: dark)">
+      <img src="/assets/logos/mnp-horizontal.svg" alt="MedNuclear Pragmática" width="200" height="36">
+    </picture>
+  </a>
+  <nav aria-label="Navegação do site"><a href="/ferramentas/">Ferramentas</a></nav>
+</header>
+<div class="mnp-termica nao-imprime" aria-hidden="true"></div>
+
+<main id="conteudo" class="pagina nao-imprime">
+  <header class="abertura">
+    <p class="mnp-eyebrow">Ferramenta · <span class="radiofarmaco">⁹⁹ᵐTc-DMSA</span> · cintilografia renal estática</p>
+    <h1>Cintilografia renal com DMSA</h1>
+    <p class="fina">Função renal relativa pela posterior e pela média geométrica, área relativa e função corrigida pelo tamanho, com fundo perirrenal.</p>
+  </header>
+
+  <p class="mnp-aviso aviso-uso" role="note"><strong>Ferramenta de pesquisa e ensino, ainda não validada para uso clínico.</strong> Auxílio ao cálculo; a interpretação é de responsabilidade do médico nuclear. <strong>Processamento 100% local: nenhum dado sai do seu computador.</strong></p>
+
+  <!-- Tela de carregamento: o núcleo em Python roda no navegador (Pyodide) -->
+  <section id="carregamento" class="carregamento" aria-live="polite">
+    <h2>Preparando o núcleo de cálculo</h2>
+    <p class="carregamento-texto">Na primeira vez o navegador baixa o Python (cerca de 15 MB). Depois fica guardado e abre mais rápido. Nenhuma imagem é enviada: o download é só do programa.</p>
+    <div class="barra" role="progressbar" aria-label="Progresso do carregamento" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span></span></div>
+    <ol class="etapas-carga">
+      <li data-etapa="pyodide">Python no navegador (Pyodide <span data-versao-pyodide></span>)</li>
+      <li data-etapa="numpy">NumPy</li>
+      <li data-etapa="pacotes">pydicom e núcleo mnp-nucleo</li>
+      <li data-etapa="iniciar">Conferência do núcleo</li>
+    </ol>
+    <div class="erro-carga" hidden>
+      <p><strong>Não foi possível carregar o núcleo.</strong> <span data-erro-carga></span></p>
+      <p>Confira a conexão com a internet (necessária só para baixar o programa) e use um navegador atualizado (Chrome, Edge, Firefox ou Safari recentes).</p>
+      <button type="button" class="mnp-btn" data-acao="recarregar">Tentar de novo</button>
+    </div>
+  </section>
+
+  <!-- Ferramenta -->
+  <section id="ferramenta" hidden>
+    <nav class="passos" aria-label="Etapas">
+      <ol>
+        <li><button type="button" data-passo="0"><span class="num">1</span>Imagens</button></li>
+        <li><button type="button" data-passo="1"><span class="num">2</span>ROIs dos rins</button></li>
+        <li><button type="button" data-passo="2"><span class="num">3</span>Fundo</button></li>
+        <li><button type="button" data-passo="3"><span class="num">4</span>Resultados</button></li>
+        <li><button type="button" data-passo="4"><span class="num">5</span>Laudo</button></li>
+      </ol>
+    </nav>
+
+    <!-- Passo 1 -->
+    <section class="passo" data-painel="0" aria-labelledby="t-passo-1">
+      <h2 id="t-passo-1">Imagens DICOM</h2>
+      <div class="zona-envio" tabindex="0" role="button" aria-describedby="envio-ajuda">
+        <p class="zona-titulo">Arraste os arquivos DICOM para cá ou clique para escolher</p>
+        <p id="envio-ajuda" class="zona-ajuda">A posterior é obrigatória; anterior e oblíquas entram se houver. Arquivo com vários quadros vira um item por quadro. Sem compressão.</p>
+        <input type="file" multiple hidden data-entrada-arquivos>
+      </div>
+      <p class="exemplo">Sem exame à mão? <button type="button" class="link" data-acao="fantoma">Carregar o fantoma de exemplo</button> ou <button type="button" class="link" data-acao="fantoma-mf">a versão em um arquivo de dois quadros</button>. No fantoma, os rins têm 44% e 56% da área com a mesma captação por pixel: função relativa 44,0% e corrigida pelo tamanho 50,0%.</p>
+      <div data-erros></div>
+      <div data-avisos-1></div>
+      <div data-slots class="slots"></div>
+      <div class="acoes">
+        <button type="button" class="mnp-btn" data-acao="limpar" hidden>Começar de novo</button>
+        <p class="validacao" data-validacao="0"></p>
+        <button type="button" class="mnp-btn mnp-btn--principal" data-ir="1">Desenhar as ROIs</button>
+      </div>
+    </section>
+
+    <!-- Passo 2 -->
+    <section class="passo" data-painel="1" aria-labelledby="t-passo-2" hidden>
+      <h2 id="t-passo-2">ROIs dos rins</h2>
+      <div class="instrucoes">
+        <p>Na <strong>posterior</strong>, escolha o rim e desenhe à mão livre o contorno do rim inteiro; o polígono se fecha ao soltar. Para corrigir, desenhe de novo ou arraste a ROI. Na posterior, o rim direito do paciente fica à direita da imagem.</p>
+        <p class="nota">Na anterior, as ROIs são espelhadas da posterior (esquerda e direita trocam) e podem ser arrastadas à parte, sem mudar a posterior. Botão do meio (arrastar): brilho na vertical e contraste na horizontal; duplo clique do meio restaura. Botão direito: escala de cinza normal ou invertida. Ajustes de exibição não mudam as contagens. Oblíquas servem só para visualização.</p>
+      </div>
+      <div class="seletor-rim" role="radiogroup" aria-label="Rim a desenhar">
+        <button type="button" role="radio" class="chip chip-D" data-rim="D" aria-checked="true"><i></i>Rim direito</button>
+        <button type="button" role="radio" class="chip chip-E" data-rim="E" aria-checked="false"><i></i>Rim esquerdo</button>
+        <span class="estado-rois" data-estado-rois></span>
+      </div>
+      <div data-visores-rois class="par-grande"></div>
+      <div class="linha-acoes" data-acoes-rois></div>
+      <div data-avisos-2></div>
+      <div class="acoes">
+        <button type="button" class="mnp-btn" data-ir="0">Voltar</button>
+        <p class="validacao" data-validacao="1"></p>
+        <button type="button" class="mnp-btn mnp-btn--principal" data-ir="2">Conferir o fundo</button>
+      </div>
+    </section>
+
+    <!-- Passo 3 -->
+    <section class="passo" data-painel="2" aria-labelledby="t-passo-3" hidden>
+      <h2 id="t-passo-3">Fundo</h2>
+      <div class="instrucoes">
+        <p>O fundo é um <strong>anel de 4 pixels em volta de cada rim inteiro</strong>, calculado automaticamente a partir da ROI, sem invadir a ROI do outro rim. A diretriz manda subtrair o fundo medido perto do rim, fora do parênquima e de áreas de captação aumentada (Vali et al., 2022). Entre as formas de fundo comparadas com o SPECT, só a circunferencial, em volta do rim inteiro, não diferiu dele (Civan et al., 2022).</p>
+        <p>Confira os anéis. Se um deles pegar atividade que não é fundo (pelve dilatada, baço, fígado), desenhe à mão a região de fundo daquele rim naquela vista; a correção vale só ali.</p>
+        <p class="nota">Contexto: a forma de subtrair o fundo foi uma das fontes de diferença entre hospitais numa auditoria do Reino Unido (Fleming et al., 1998); regiões de fundo diferentes mudam o resultado sobretudo abaixo de 45%, e no seguimento o fundo deve ser feito sempre do mesmo jeito (Girotto et al., 2008).</p>
+      </div>
+      <fieldset class="metodo-fundo">
+        <legend>Correção de fundo</legend>
+        <label class="caixa"><input type="radio" name="metodo-fundo" value="anel" data-metodo-fundo checked> Anel perirrenal (padrão)</label>
+        <label class="caixa"><input type="radio" name="metodo-fundo" value="nenhum" data-metodo-fundo> Sem correção, para comparação</label>
+      </fieldset>
+      <div data-visores-fundo class="par-grande"></div>
+      <div data-avisos-3></div>
+      <div class="acoes">
+        <button type="button" class="mnp-btn" data-ir="1">Voltar às ROIs</button>
+        <button type="button" class="mnp-btn" data-acao="fundos-automaticos" hidden>Voltar todos ao anel</button>
+        <p class="validacao" data-validacao="2"></p>
+        <button type="button" class="mnp-btn mnp-btn--principal" data-ir="3">Calcular</button>
+      </div>
+    </section>
+
+    <!-- Passo 4 -->
+    <section class="passo" data-painel="3" aria-labelledby="t-passo-4" hidden>
+      <h2 id="t-passo-4">Resultados</h2>
+      <p class="erro" data-erro-resultados hidden></p>
+      <p class="nota" data-fundo-texto></p>
+      <div class="tabela-rolagem tabela-rolagem--funcao"><table class="resultados tabela-funcao" data-tabela-funcao></table></div>
+      <p class="nota">Faixa normal da função relativa: 45,0% a 55,0% para cada rim (Vali et al., 2022; diretriz pediátrica, aplicada aqui a qualquer idade). Pela posterior basta na rotina; a média geométrica é a indicada em hidronefrose grave e em rim pélvico, ectópico, em ferradura ou fundido. Área relativa e função corrigida pelo tamanho servem de apoio: quando um rim é pequeno e normal, a função relativa cai e a corrigida pelo tamanho fica perto de 50% (Estorch et al., 2004).</p>
+      <h3 class="subtitulo">Contagens</h3>
+      <div class="tabela-rolagem"><table class="resultados" data-tabela-contagens></table></div>
+      <ul class="notas" data-notas></ul>
+      <div class="exportar">
+        <button type="button" class="mnp-btn" data-exportar="csv">Baixar CSV</button>
+        <button type="button" class="mnp-btn" data-exportar="xlsx">Baixar Excel</button>
+        <button type="button" class="mnp-btn" data-exportar="protocolo" title="ROIs, fundo e arquivos, para refazer o cálculo em lote no computador">Baixar protocolo (.json)</button>
+      </div>
+      <div class="acoes">
+        <button type="button" class="mnp-btn" data-ir="2">Voltar</button>
+        <span class="validacao"></span>
+        <button type="button" class="mnp-btn mnp-btn--principal" data-ir="4">Montar o laudo</button>
+      </div>
+    </section>
+
+    <!-- Passo 5 -->
+    <section class="passo" data-painel="4" aria-labelledby="t-passo-5" hidden>
+      <h2 id="t-passo-5">Laudo</h2>
+      <div class="cabecalho-laudo">
+        <label class="campo campo-largo">Paciente <input type="text" data-paciente maxlength="120" autocomplete="off"></label>
+        <label class="campo campo-largo">Data do exame <input type="text" data-data-exame maxlength="40" autocomplete="off" placeholder="dd/mm/aaaa"></label>
+        <p class="nota">Preenchidos à mão e usados só no laudo. A ferramenta não lê nome nem dados do paciente no DICOM.</p>
+      </div>
+
+      <section class="bloco-imagens" aria-labelledby="t-imagens">
+        <div class="cab-imagens">
+          <h3 id="t-imagens">Imagens do estudo</h3>
+          <span class="alternar" role="group" aria-label="Escala de cinza das imagens">
+            <button type="button" data-cinza-grade="normal" aria-pressed="true">Cinza</button>
+            <button type="button" data-cinza-grade="invertida" aria-pressed="false">Cinza invertida</button>
+          </span>
+        </div>
+        <div class="grade-laudo" data-grade-laudo></div>
+        <p class="nota">Contorno âmbar: rim direito. Contorno verde-azulado: rim esquerdo. Região translúcida: fundo. O que for copiado ou baixado sai na escala escolhida.</p>
+      </section>
+
+      <div class="tabelas-laudo" data-tabelas-laudo></div>
+
+      <div class="exportar">
+        <button type="button" class="mnp-btn" data-copiar="tabela">Copiar tabela</button>
+        <button type="button" class="mnp-btn" data-copiar="imagens">Copiar imagens</button>
+        <button type="button" class="mnp-btn" data-copiar="tudo">Copiar tudo</button>
+        <button type="button" class="mnp-btn" data-exportar="xlsx">Baixar Excel</button>
+        <button type="button" class="mnp-btn mnp-btn--principal" data-acao="imprimir">Imprimir ou salvar PDF</button>
+      </div>
+      <p class="nota" data-status-copia role="status" aria-live="polite"></p>
+      <p class="nota">Para colar no Word: "Copiar tudo" leva imagens e tabelas juntas. Se o Word não colar as imagens, use "Copiar imagens" e depois "Copiar tabela".</p>
+
+      <section class="bloco-laudo" aria-labelledby="t-laudo">
+        <h2 id="t-laudo">Laudo de processamento</h2>
+        <div class="laudo-previa" data-laudo></div>
+      </section>
+
+      <div class="acoes">
+        <button type="button" class="mnp-btn" data-ir="3">Voltar</button>
+      </div>
+    </section>
+  </section>
+</main>
+
+<div id="area-impressao" aria-hidden="true"></div>
+
+<footer class="rodape nao-imprime">
+  <p>MedNuclear Pragmática · por Felipe Mourato</p>
+  <p data-versoes>Núcleo carregando…</p>
+  <p>Código aberto: <a href="https://github.com/felipe-mourato/mednuclearpragmatica-site/tree/main/nucleo">núcleo em Python</a> · <a href="https://github.com/felipe-mourato/mednuclearpragmatica-site/blob/main/nucleo/CHANGELOG.md">histórico de versões</a></p>
+</footer>
+
+<!-- Menu do botão direito sobre as imagens -->
+<div class="menu-contexto" role="menu" hidden>
+  <button type="button" role="menuitemradio" data-cinza="normal">Escala de cinza</button>
+  <button type="button" role="menuitemradio" data-cinza="invertida">Cinza invertida</button>
+  <hr>
+  <button type="button" role="menuitem" data-cinza="resetar">Restaurar brilho e contraste</button>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>

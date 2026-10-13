@@ -15,7 +15,7 @@ readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
 authors = [{ name = "Felipe Mourato" }]
-keywords = ["medicina nuclear", "cintilografia", "DICOM", "esvaziamento gástrico"]
+keywords = ["medicina nuclear", "cintilografia", "DICOM", "esvaziamento gástrico", "DMSA", "função renal relativa"]
 classifiers = [
     "Programming Language :: Python :: 3",
     "Intended Audience :: Science/Research",
@@ -39,6 +39,7 @@ Codigo = "https://github.com/felipe-mourato/mednuclearpragmatica-site/tree/main/
 
 [project.scripts]
 mnp-gastrico = "mnp_nucleo.gastrico.lote:main"
+mnp-dmsa = "mnp_nucleo.dmsa.lote:main"
 
 [tool.flit.module]
 name = "mnp_nucleo"
