@@ -23,7 +23,7 @@ import numpy as np
 from pydicom.dataset import Dataset, FileMetaDataset
 from pydicom.uid import ExplicitVRLittleEndian, ImplicitVRLittleEndian, SecondaryCaptureImageStorage, generate_uid
 
-__all__ = ["gerar_dicom", "Fantoma", "fantoma_esvaziamento"]
+__all__ = ["gerar_dicom", "Fantoma", "fantoma_esvaziamento", "FantomaDMSA", "fantoma_dmsa"]
 
 
 def gerar_dicom(
@@ -147,3 +147,106 @@ def fantoma_esvaziamento(
     roi = [(float(x0), float(y0)), (float(x0 + larg), float(y0)), (float(x0 + larg), float(y0 + alt)), (float(x0), float(y0 + alt))]
     eixo = [(float(x0 + larg / 2), float(y0)), (float(x0 + larg / 2), float(y0 + alt))]
     return Fantoma(arquivos, roi, eixo, list(minutos), list(retencao), list(distribuicao), multiframe)
+
+
+@dataclass
+class FantomaDMSA:
+    """Fantoma de cintilografia renal com DMSA com resposta conhecida.
+
+    ``rois`` traz os contornos exatos dos rins na posterior; ``esperado`` os
+    percentuais do rim direito (o esquerdo é 100 menos) calculados à mão a
+    partir das contagens do desenho, com o fundo uniforme subtraído.
+    """
+
+    arquivos: dict[str, bytes]
+    multiframe: dict[str, bytes]
+    rois: dict[str, list[tuple[float, float]]]
+    esperado: dict[str, float]
+    contagens: dict[str, float]
+
+
+def fantoma_dmsa(
+    tamanho: int = 64,
+    fundo_post: int = 10,
+    fundo_ant: int = 8,
+    rim_d_post: int = 100,
+    rim_e_post: int = 100,
+    rim_d_ant: int = 50,
+    rim_e_ant: int = 40,
+    inicio: datetime = datetime(2026, 10, 13, 11, 0, 0),
+) -> FantomaDMSA:
+    """Gera um exame de DMSA com contagens conhecidas.
+
+    Posterior (o rim direito do paciente fica à direita da imagem): rim
+    direito retangular de 10 × 22 pixels (área 220) e rim esquerdo de
+    10 × 28 pixels (área 280), ou seja, áreas de 44% e 56%. Atividade
+    uniforme por pixel acima de um fundo uniforme em toda a imagem. Na
+    anterior os rins aparecem espelhados (x' = tamanho − x) e com atividade
+    menor, diferente em cada rim (profundidades diferentes).
+
+    Como o fundo é uniforme, qualquer região de fundo fora dos rins mede
+    exatamente o fundo, e a contagem corrigida de cada rim é
+    (atividade por pixel) × área. Com os valores padrão, e os mesmos
+    100 por pixel nos dois rins na posterior:
+
+    * função relativa posterior: 22000 ÷ (22000 + 28000) = 44,0%;
+    * área relativa: 220 ÷ 500 = 44,0%;
+    * corrigida pelo tamanho (contagem por pixel): 100 ÷ (100 + 100) = 50,0%;
+    * média geométrica: √(22000 × 11000) ÷ (√(22000 × 11000) + √(28000 × 11200)).
+
+    Inclui também imagens OPD e OPE (só para exibição) e uma versão
+    multiframe com o quadro 1 posterior e o quadro 2 anterior.
+    """
+    import math
+
+    caixa_d = (38, 18, 10, 22)  # x0, y0, largura, altura, na posterior
+    caixa_e = (14, 15, 10, 28)
+
+    def imagem(fundo, caixas_valores):
+        img = np.full((tamanho, tamanho), fundo, dtype=np.int64)
+        for (x0, y0, w, h), valor in caixas_valores:
+            img[y0 : y0 + h, x0 : x0 + w] = fundo + valor
+        return img
+
+    def espelho(caixa):
+        x0, y0, w, h = caixa
+        return (tamanho - x0 - w, y0, w, h)
+
+    post = imagem(fundo_post, [(caixa_d, rim_d_post), (caixa_e, rim_e_post)])
+    ant = imagem(fundo_ant, [(espelho(caixa_d), rim_d_ant), (espelho(caixa_e), rim_e_ant)])
+    # Oblíquas: rins estreitados, só para a grade de imagens.
+    opd = imagem(fundo_post, [((40, 18, 6, 22), rim_d_post), ((16, 15, 8, 28), rim_e_post)])
+    ope = imagem(fundo_post, [((40, 18, 8, 22), rim_d_post), ((18, 15, 6, 28), rim_e_post)])
+
+    arquivos = {
+        "dmsa_post.dcm": gerar_dicom(post, inicio, "DMSA POST"),
+        "dmsa_ant.dcm": gerar_dicom(ant, inicio + timedelta(minutes=1), "DMSA ANT"),
+        "dmsa_opd.dcm": gerar_dicom(opd, inicio + timedelta(minutes=2), "DMSA OPD"),
+        "dmsa_ope.dcm": gerar_dicom(ope, inicio + timedelta(minutes=3), "DMSA OPE"),
+    }
+    multiframe = {"dmsa_post_ant.dcm": gerar_dicom([post, ant], inicio, "DMSA")}
+
+    def retangulo(caixa):
+        x0, y0, w, h = caixa
+        return [(float(x0), float(y0)), (float(x0 + w), float(y0)), (float(x0 + w), float(y0 + h)), (float(x0), float(y0 + h))]
+
+    a_d = caixa_d[2] * caixa_d[3]
+    a_e = caixa_e[2] * caixa_e[3]
+    c = {
+        "D_post": rim_d_post * a_d,
+        "E_post": rim_e_post * a_e,
+        "D_ant": rim_d_ant * a_d,
+        "E_ant": rim_e_ant * a_e,
+    }
+    mg_d = math.sqrt(c["D_ant"] * c["D_post"])
+    mg_e = math.sqrt(c["E_ant"] * c["E_post"])
+    esp = {k: math.sqrt((c[f"{k}_ant"] / a) * (c[f"{k}_post"] / a)) for k, a in (("D", a_d), ("E", a_e))}
+    esperado = {
+        "frr_post": 100.0 * c["D_post"] / (c["D_post"] + c["E_post"]),
+        "frr_mg": 100.0 * mg_d / (mg_d + mg_e),
+        "area_post": 100.0 * a_d / (a_d + a_e),
+        "area_mg": 100.0 * a_d / (a_d + a_e),
+        "tam_post": 100.0 * rim_d_post / (rim_d_post + rim_e_post),
+        "tam_mg": 100.0 * esp["D"] / (esp["D"] + esp["E"]),
+    }
+    return FantomaDMSA(arquivos, multiframe, {"D": retangulo(caixa_d), "E": retangulo(caixa_e)}, esperado, c)

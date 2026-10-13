@@ -36,5 +36,11 @@
 - title: "Cintilografia de esvaziamento gástrico"
   exame: "⁹⁹ᵐTc, refeição sólida"
   description: "Retenção e esvaziamento por média geométrica das projeções anterior e posterior, com correção de decaimento, divisão proximal e distal pelo eixo longitudinal e referências para adultos e crianças."
-  versao: "0.2.0"
+  versao: "0.3.0"
   endereco: "/ferramentas/esvaziamento-gastrico/"
+
+- title: "Cintilografia renal com DMSA"
+  exame: "⁹⁹ᵐTc-DMSA"
+  description: "Função renal relativa pela posterior e pela média geométrica, com fundo perirrenal em anel, área relativa e função corrigida pelo tamanho; laudo com as imagens e as ROIs, pronto para colar no Word."
+  versao: "0.3.0"
+  endereco: "/ferramentas/dmsa/"

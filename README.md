@@ -142,9 +142,9 @@ As duas páginas estão prontas, mas fora do menu e marcadas como rascunho.
 2. Abra `ferramentas/index.qmd` (ou `cursos/index.qmd`) e apague a linha `draft: true`.
 3. Confira com `quarto preview` e publique.
 
-**Para acrescentar um cartão de ferramenta:** abra `ferramentas/ferramentas.yml`. O arquivo explica os campos e traz um cartão de exemplo comentado. Copie o bloco de exemplo, cole no fim, apague o `# ` do início de cada linha e preencha. Se a ferramenta ainda não tiver artigo de validação, apague a linha `validacao:`; o cartão mostra "Artigo ainda não publicado". O cartão do esvaziamento gástrico já está lá.
+**Para acrescentar um cartão de ferramenta:** abra `ferramentas/ferramentas.yml`. O arquivo explica os campos e traz um cartão de exemplo comentado. Copie o bloco de exemplo, cole no fim, apague o `# ` do início de cada linha e preencha. Se a ferramenta ainda não tiver artigo de validação, apague a linha `validacao:`; o cartão mostra "Artigo ainda não publicado". Os cartões do esvaziamento gástrico e do DMSA já estão lá.
 
-**Ao ativar a seção Ferramentas**, abra também `ferramentas/esvaziamento-gastrico/index.html` e troque `noindex, nofollow` por `index, follow` (a ferramenta fica fora do Google enquanto a seção é rascunho, mas o endereço já funciona para quem tiver o link).
+**Ao ativar a seção Ferramentas**, abra também o `index.html` de cada ferramenta (`ferramentas/esvaziamento-gastrico/` e `ferramentas/dmsa/`) e troque `noindex, nofollow` por `index, follow` (a ferramenta fica fora do Google enquanto a seção é rascunho, mas o endereço já funciona para quem tiver o link).
 
 **Para acrescentar um cartão de curso:** o mesmo, em `cursos/cursos.yml`, com o link da página da Hotmart no campo `endereco`.
 
@@ -202,7 +202,7 @@ Os logos ficam em `https://mednuclearpragmatica.com.br/assets/logos/`. Se mudar 
 
 - **Atualizar o Quarto do site:** em `build.sh`, troque o número em `QUARTO_VERSION` por uma versão estável recente (<https://quarto.org/docs/download/>), instale a mesma versão no Mac e confira com `quarto preview` antes de publicar.
 - **Testar o build como o Cloudflare faz** (opcional): o `build.sh` foi feito para Linux, então no Mac use só `quarto render` para conferir se o site gera sem erros, e os testes do núcleo (seção 11) para conferir os cálculos.
-- **Atualizar o Pyodide das ferramentas:** em `ferramentas/esvaziamento-gastrico/app.js`, troque `PYODIDE_VERSAO`, abra a ferramenta publicada e processe o fantoma de exemplo; a retenção deve dar 100, 60, 30 e 8%.
+- **Atualizar o Pyodide das ferramentas:** no `app.js` de cada ferramenta (`ferramentas/esvaziamento-gastrico/` e `ferramentas/dmsa/`), troque `PYODIDE_VERSAO`, abra a ferramenta publicada e processe o fantoma de exemplo: no gástrico a retenção deve dar 100, 60, 30 e 8%; no DMSA, função relativa posterior de 44,0% e 56,0% e corrigida pelo tamanho de 50,0%.
 
 ## 11. Ferramentas e o núcleo em Python
 
@@ -230,7 +230,9 @@ cd nucleo
 .venv/bin/python -m pytest
 ```
 
-Para conferir a ferramenta sem exame próprio, use o botão "Carregar o fantoma de exemplo": a retenção esperada é 100, 60, 30 e 8%.
+Para conferir uma ferramenta sem exame próprio, use o botão "Carregar o fantoma de exemplo": no esvaziamento gástrico a retenção esperada é 100, 60, 30 e 8%; no DMSA, função relativa posterior do rim direito de 44,0%, pela média geométrica de 46,8% e corrigida pelo tamanho de 50,0%.
+
+Ferramentas publicadas (escondidas, só para quem tem o link): `/ferramentas/esvaziamento-gastrico/` e `/ferramentas/dmsa/`.
 
 **Lançar uma versão do núcleo:** passo a passo em `nucleo/README.md`. Em resumo: mude o número em `nucleo/src/mnp_nucleo/__init__.py`, registre em `nucleo/CHANGELOG.md`, atualize `CITATION.cff` e o campo `versao` do cartão em `ferramentas/ferramentas.yml`, publique e crie a *release* no GitHub (seção 12).
 

@@ -2,6 +2,27 @@
 
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e as versões seguem [versionamento semântico](https://semver.org/lang/pt-BR/). Toda entrada diz se algum número calculado muda em relação à versão anterior.
 
+## [0.3.0] - 2026-10-13
+
+Nenhum número da ferramenta de esvaziamento gástrico muda: o subpacote `gastrico` não foi alterado e os testes dele passam como antes.
+
+### Incluído
+
+- **Cintilografia renal com ⁹⁹ᵐTc-DMSA** (`mnp_nucleo.dmsa`, ferramenta em `/ferramentas/dmsa/`).
+  - Incidências POSTERIOR (obrigatória), ANTERIOR e oblíquas (OPD, OPE, OAD, OAE; só exibição), sugeridas pela descrição da série (siglas em português e em inglês) e corrigíveis. Arquivo multiframe vira um item por quadro, com quadro 1 posterior e quadro 2 anterior como sugestão; quadros seguintes ficam de fora até o usuário escolher.
+  - ROIs dos dois rins desenhadas à mão na posterior; na anterior, espelhadas (x' = largura − x, a mesma convenção do gástrico) e deslocáveis à parte. Com dimensões diferentes entre posterior e anterior, o espelhamento é feito em escala, com aviso.
+  - Fundo: anel perirrenal circunferencial de 4 pixels em volta de cada rim inteiro, sem invadir a ROI do outro rim, calculado automaticamente. A forma segue Civan et al. (Phys Med 2022;95:83-8, doi:10.1016/j.ejmp.2022.01.010), em que só o fundo em volta do rim inteiro não diferiu do SPECT; a largura de 4 pixels é escolha da ferramenta (a fonte consultada não informa a largura) e está declarada na tela e no laudo. Correção à mão por rim e por vista, com volta ao anel. Opção "sem correção" para comparação.
+  - Função relativa pela posterior e pela média geométrica, área relativa e função corrigida pelo tamanho (contagem por pixel, Estorch et al., Nucl Med Commun 2004;25:167-70, doi:10.1097/00006231-200402000-00013), todas somando 100%. Comparação dentro ou fora de 45–55% só para a função relativa (Vali et al., Clin Transl Imaging 2022;10:173-84, doi:10.1007/s40336-022-00484-x; diretriz pediátrica, aplicada a qualquer idade com nota no laudo).
+  - Saídas: tabelas, CSV, Excel, figuras PNG com as ROIs e o fundo (cinza normal ou invertida), laudo HTML com imagens para imprimir ou colar no Word, protocolo de reprodução (com cada região de fundo gravada como máscara) e lote no computador (`mnp-dmsa` ou `python -m mnp_nucleo.dmsa`).
+  - O laudo não lê dados do paciente no DICOM: nome e data do exame são digitados pelo usuário.
+  - Fantoma `fantoma_dmsa()` com resposta exata (rins de 44% e 56% da área com a mesma captação por pixel: função relativa 44,0%, corrigida pelo tamanho 50,0%).
+- `comum.morfologia` (dilatação por disco, contorno, máscara em trechos) e `comum.png` (codificador PNG com a biblioteca padrão).
+
+### Desvios declarados em relação às fontes
+
+- A largura do anel de fundo (4 pixels) não vem de artigo.
+- A correção pelo tamanho usa a área da ROI na imagem planar, não o volume renal; o laudo explica que a área cresce menos que o volume. O método exato de medida de tamanho de Estorch et al. não foi conferido no texto completo.
+
 ## [0.2.0] - 2026-10-09
 
 Muda números em relação à 0.1.0: proximal, distal e as retenções regionais. A retenção total não muda.
