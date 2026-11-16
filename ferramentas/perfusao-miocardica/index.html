@@ -1,0 +1,278 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cintilografia de perfusão miocárdica · MedNuclear Pragmática</title>
+<meta name="description" content="SPECT de perfusão miocárdica a partir das projeções: controle de qualidade, reconstrução, eixos, cortes, mapa polar e escores. Processamento 100% local, no navegador.">
+<!-- Fora dos buscadores enquanto a seção Ferramentas for rascunho.
+     Ao ativar a seção (README, seção 6), troque por: index, follow -->
+<meta name="robots" content="noindex, nofollow">
+<meta property="og:title" content="Cintilografia de perfusão miocárdica · Ferramentas MedNuclear Pragmática">
+<meta property="og:description" content="SPECT de perfusão miocárdica a partir das projeções DICOM, no seu navegador.">
+<meta property="og:image" content="https://mednuclearpragmatica.com.br/assets/og/cartao-padrao.png">
+<meta name="theme-color" content="#F5F7FA" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0B1622" media="(prefers-color-scheme: dark)">
+<link rel="icon" href="/assets/favicon/favicon.svg" type="image/svg+xml">
+<link rel="icon" type="image/png" sizes="32x32" href="/assets/favicon/favicon-32.png">
+<link rel="apple-touch-icon" sizes="180x180" href="/assets/favicon/apple-touch-icon.png">
+<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+<link rel="stylesheet" href="/assets/marca/mnp-marca.css">
+<link rel="stylesheet" href="estilo.css">
+</head>
+<body>
+<a class="pular" href="#conteudo">Pular para a ferramenta</a>
+
+<header class="mnp-topo nao-imprime">
+  <a href="/" aria-label="MedNuclear Pragmática, página inicial">
+    <picture>
+      <source srcset="/assets/logos/mnp-horizontal-negativo.svg" media="(prefers-color-scheme: dark)">
+      <img src="/assets/logos/mnp-horizontal.svg" alt="MedNuclear Pragmática" width="200" height="36">
+    </picture>
+  </a>
+  <nav aria-label="Navegação do site"><a href="/ferramentas/">Ferramentas</a></nav>
+</header>
+<div class="mnp-termica nao-imprime" aria-hidden="true"></div>
+
+<main id="conteudo" class="pagina nao-imprime">
+  <header class="abertura">
+    <p class="mnp-eyebrow">Ferramenta · <span class="radiofarmaco">⁹⁹ᵐTc-MIBI</span> ou <span class="radiofarmaco">⁹⁹ᵐTc-tetrofosmin</span> · SPECT</p>
+    <h1>Cintilografia de perfusão miocárdica</h1>
+    <p class="fina">Das projeções ao laudo: controle de qualidade, reconstrução, eixos do VE, cortes de estresse e repouso, mapa polar e escores.</p>
+  </header>
+
+  <p class="mnp-aviso aviso-uso" role="note"><strong>Ferramenta de pesquisa e ensino, ainda não validada para uso clínico.</strong> Auxílio ao cálculo; a interpretação é de responsabilidade do médico nuclear. <strong>Processamento 100% local: nenhum dado sai do seu computador.</strong></p>
+
+  <section id="carregamento" class="carregamento" aria-live="polite">
+    <h2>Preparando o núcleo de cálculo</h2>
+    <p class="carregamento-texto">Na primeira vez o navegador baixa o Python (cerca de 15 MB). Depois fica guardado e abre mais rápido. Nenhuma imagem é enviada: o download é só do programa.</p>
+    <div class="barra" role="progressbar" aria-label="Progresso do carregamento" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span></span></div>
+    <ol class="etapas-carga">
+      <li data-etapa="pyodide">Python no navegador (Pyodide <span data-versao-pyodide></span>)</li>
+      <li data-etapa="numpy">NumPy</li>
+      <li data-etapa="pacotes">pydicom e núcleo mnp-nucleo</li>
+      <li data-etapa="iniciar">Conferência do núcleo</li>
+    </ol>
+    <div class="erro-carga" hidden>
+      <p><strong>Não foi possível carregar o núcleo.</strong> <span data-erro-carga></span></p>
+      <p>Confira a conexão com a internet (necessária só para baixar o programa) e use um navegador atualizado (Chrome, Edge, Firefox ou Safari recentes).</p>
+      <button type="button" class="mnp-btn" data-acao="recarregar">Tentar de novo</button>
+    </div>
+  </section>
+
+  <section id="ferramenta" hidden>
+    <nav class="passos" aria-label="Etapas">
+      <ol>
+        <li><button type="button" data-passo="0"><span class="num">1</span>Arquivos</button></li>
+        <li><button type="button" data-passo="1"><span class="num">2</span>Controle de qualidade</button></li>
+        <li><button type="button" data-passo="2"><span class="num">3</span>Reconstrução</button></li>
+        <li><button type="button" data-passo="3"><span class="num">4</span>Eixos</button></li>
+        <li><button type="button" data-passo="4"><span class="num">5</span>Cortes</button></li>
+        <li><button type="button" data-passo="5"><span class="num">6</span>Mapa polar e escores</button></li>
+        <li><button type="button" data-passo="6"><span class="num">7</span>Laudo</button></li>
+      </ol>
+    </nav>
+
+    <!-- Passo 1: arquivos -->
+    <section class="passo" data-painel="0" aria-labelledby="t-passo-1">
+      <h2 id="t-passo-1">Projeções DICOM</h2>
+      <div class="zona-envio" tabindex="0" role="button" aria-describedby="envio-ajuda">
+        <p class="zona-titulo">Arraste os arquivos DICOM para cá ou clique para escolher</p>
+        <p id="envio-ajuda" class="zona-ajuda">As projeções brutas (não os cortes reconstruídos): estresse, repouso e os gated de cada um; prona, se houver. Sem compressão ou em JPEG sem perdas.</p>
+        <input type="file" multiple hidden data-entrada-arquivos>
+      </div>
+      <p class="exemplo">Sem exame à mão? <button type="button" class="link" data-acao="fantoma">Carregar o fantoma de exemplo</button>: um VE sintético com defeito lateral no estresse (segmentos 5, 6, 11 e 12 a 50%) e repouso normal, com fígado e um foco intestinal, na geometria de uma câmera de duas cabeças a 90°. O gated do estresse tem arritmia (últimos intervalos com menos contagens).</p>
+      <div data-erros></div>
+      <div data-avisos-0></div>
+      <div data-arquivos class="slots"></div>
+      <div class="acoes">
+        <button type="button" class="mnp-btn" data-acao="limpar" hidden>Começar de novo</button>
+        <p class="validacao" data-validacao="0"></p>
+        <button type="button" class="mnp-btn mnp-btn--principal" data-ir="1">Controle de qualidade</button>
+      </div>
+    </section>
+
+    <!-- Passo 2: controle de qualidade -->
+    <section class="passo" data-painel="1" aria-labelledby="t-passo-2" hidden>
+      <h2 id="t-passo-2">Controle de qualidade das projeções</h2>
+      <div class="instrucoes">
+        <p>Veja o cine das projeções (movimento, atividade extracardíaca), o sinograma e o linograma. No sinograma, movimento lateral aparece como quebra ou degrau na curva do coração; no linograma, movimento craniocaudal aparece como degrau horizontal. Deslocamento de 2 pixels ou mais costuma causar artefato importante (Germano, 2001).</p>
+        <p class="nota">Botão do meio (arrastar): brilho na vertical e contraste na horizontal; duplo clique do meio restaura. Botão direito: escala de cinza normal ou invertida.</p>
+      </div>
+      <div class="abas" role="tablist" aria-label="Arquivo" data-abas-qc></div>
+      <div class="grade-qc">
+        <div class="coluna-visor">
+          <p class="visor-rotulo" data-rotulo-cine>Projeção</p>
+          <div data-visor-cine></div>
+          <div class="controle-cine">
+            <button type="button" class="mnp-btn mnp-btn--pequeno" data-acao="cine" aria-pressed="false">Reproduzir</button>
+            <label class="campo">Ângulo <input type="range" min="0" max="63" value="0" data-angulo></label>
+            <span class="campo-nota" data-angulo-texto></span>
+          </div>
+          <div class="controle-cine" data-controle-intervalo hidden>
+            <label class="campo">Intervalo do gated <select data-intervalo></select></label>
+          </div>
+        </div>
+        <div class="coluna-visor">
+          <p class="visor-rotulo">Sinograma <span data-linha-texto></span></p>
+          <div data-visor-sino></div>
+          <div class="controle-cine"><label class="campo">Linha <input type="range" min="0" max="63" value="32" data-linha></label></div>
+        </div>
+        <div class="coluna-visor">
+          <p class="visor-rotulo">Linograma (linhas × ângulo)</p>
+          <div data-visor-lino></div>
+        </div>
+      </div>
+      <h3 class="subtitulo">Contagens por projeção</h3>
+      <div class="grafico" data-grafico-projecoes></div>
+      <div data-qc-gated></div>
+      <div class="acoes">
+        <button type="button" class="mnp-btn" data-ir="0">Voltar</button>
+        <p class="validacao" data-validacao="1"></p>
+        <button type="button" class="mnp-btn mnp-btn--principal" data-ir="2">Reconstrução</button>
+      </div>
+    </section>
+
+    <!-- Passo 3: reconstrução -->
+    <section class="passo" data-painel="2" aria-labelledby="t-passo-3" hidden>
+      <h2 id="t-passo-3">Reconstrução</h2>
+      <div class="instrucoes">
+        <p>Retroprojeção filtrada (FBP) com filtro rampa, depois de um filtro de <strong>Butterworth</strong> aplicado às projeções. Corte mais baixo deixa a imagem mais lisa e menos nítida; a ordem muda a inclinação da curva (Germano, 2001). O padrão inicial (ordem 11, corte 0,45 Nyquist) é o melhor resultado num fantoma de VE com <span class="radiofarmaco">⁹⁹ᵐTc</span> citado por Lyra e Ploussi (2011). Use o filtro do seu serviço, se souber.</p>
+        <p class="nota">Atenção à unidade: algumas estações informam o corte em fração de Nyquist (0 a 1) e outras em ciclos/pixel (0 a 0,5). O mesmo filtro pode aparecer como 0,3 ou 0,6. Aqui aparecem as três unidades. O mesmo filtro vale para todos os estudos. Sem correção de atenuação.</p>
+      </div>
+      <form class="filtro" data-form-filtro>
+        <label class="campo">Corte (fração de Nyquist) <input type="number" min="0.05" max="1" step="0.01" data-corte></label>
+        <label class="campo">Ordem <input type="number" min="1" max="20" step="1" data-ordem></label>
+        <span class="campo-nota" data-filtro-unidades></span>
+        <button type="submit" class="mnp-btn mnp-btn--principal">Reconstruir</button>
+        <button type="button" class="mnp-btn" data-acao="filtro-padrao">Voltar ao padrão</button>
+      </form>
+      <div class="grafico grafico--filtro" data-grafico-filtro></div>
+      <p class="nota" data-status-recon role="status" aria-live="polite"></p>
+      <div class="par-grande" data-previas-recon></div>
+      <div class="acoes">
+        <button type="button" class="mnp-btn" data-ir="1">Voltar</button>
+        <p class="validacao" data-validacao="2"></p>
+        <button type="button" class="mnp-btn mnp-btn--principal" data-ir="3">Traçar os eixos</button>
+      </div>
+    </section>
+
+    <!-- Passo 4: eixos -->
+    <section class="passo" data-painel="3" aria-labelledby="t-passo-4" hidden>
+      <h2 id="t-passo-4">Eixo longo do VE</h2>
+      <div class="instrucoes">
+        <p><strong>1.</strong> No transaxial, escolha o corte que passa pelo meio do VE e arraste <strong>da base (plano valvar) até o ápice</strong>. <strong>2.</strong> No plano vertical, que contém essa linha, ajuste a base e o ápice de novo (o VE costuma descer para o ápice). Arraste as pontas para corrigir. É o traçado manual clássico em duas etapas (Germano, 2001).</p>
+        <p class="nota">A prévia embaixo mostra o eixo curto, o eixo longo vertical e o horizontal do meio do VE: confira se o eixo curto é um anel centrado e se as ferraduras estão simétricas. Mudar a linha do transaxial refaz a do plano vertical.</p>
+      </div>
+      <div class="abas" role="tablist" aria-label="Estudo" data-abas-eixo></div>
+      <div class="grade-eixo">
+        <div class="coluna-visor">
+          <p class="visor-rotulo">1 · Transaxial <span data-corte-texto></span></p>
+          <div data-visor-trans></div>
+          <div class="controle-cine"><label class="campo">Corte <input type="range" min="0" max="63" value="32" data-corte-trans></label></div>
+        </div>
+        <div class="coluna-visor">
+          <p class="visor-rotulo">2 · Plano vertical (ápice à direita, cabeça em cima)</p>
+          <div data-visor-plano></div>
+        </div>
+      </div>
+      <div class="linha-acoes" data-acoes-eixo></div>
+      <h3 class="subtitulo">Prévia: eixo curto, eixo longo vertical e horizontal</h3>
+      <div class="previa" data-previa-eixo></div>
+      <div data-avisos-3></div>
+      <div class="acoes">
+        <button type="button" class="mnp-btn" data-ir="2">Voltar</button>
+        <p class="validacao" data-validacao="3"></p>
+        <button type="button" class="mnp-btn mnp-btn--principal" data-ir="4">Ver os cortes</button>
+      </div>
+    </section>
+
+    <!-- Passo 5: cortes -->
+    <section class="passo" data-painel="4" aria-labelledby="t-passo-5" hidden>
+      <h2 id="t-passo-5">Cortes de estresse e repouso</h2>
+      <div class="controles-cortes">
+        <span class="alternar" role="group" aria-label="Escala de cor">
+          <button type="button" data-mapa="quente">Cor</button>
+          <button type="button" data-mapa="cinza">Cinza</button>
+          <button type="button" data-mapa="invertida">Cinza invertida</button>
+        </span>
+        <div data-tetos class="tetos"></div>
+      </div>
+      <p class="nota">Cada estudo é normalizado ao máximo do próprio VE (perfil de contagem máxima do mapa polar). O teto da escala muda só a exibição.</p>
+      <div data-cortes></div>
+      <div class="acoes">
+        <button type="button" class="mnp-btn" data-ir="3">Voltar aos eixos</button>
+        <p class="validacao" data-validacao="4"></p>
+        <button type="button" class="mnp-btn mnp-btn--principal" data-ir="5">Mapa polar e escores</button>
+      </div>
+    </section>
+
+    <!-- Passo 6: polar e escores -->
+    <section class="passo" data-painel="5" aria-labelledby="t-passo-6" hidden>
+      <h2 id="t-passo-6">Mapa polar e escores</h2>
+      <div class="instrucoes">
+        <p>Escolha o escore e clique nos segmentos do mapa (ou use as listas da tabela). Escala: 0 normal; 1 hipocaptação discreta; 2 moderada; 3 acentuada; 4 ausência de captação (SBC 2020; ASNC 2017). A pontuação é sua: a captação em % do máximo do VE ajuda a conferir, mas não há banco de normalidade.</p>
+      </div>
+      <div class="pincel" role="radiogroup" aria-label="Escore a aplicar" data-pincel></div>
+      <span class="alternar" role="group" aria-label="O que escrever no mapa">
+        <button type="button" data-rotulos="escores" aria-pressed="true">Escores</button>
+        <button type="button" data-rotulos="captacao" aria-pressed="false">Captação (%)</button>
+      </span>
+      <div class="polares" data-polares></div>
+      <div class="resumo-escores" data-resumo></div>
+      <div class="tabela-rolagem"><table class="resultados tabela-segmentos" data-tabela-segmentos></table></div>
+      <div data-avisos-5></div>
+      <div class="acoes">
+        <button type="button" class="mnp-btn" data-ir="4">Voltar</button>
+        <p class="validacao" data-validacao="5"></p>
+        <button type="button" class="mnp-btn mnp-btn--principal" data-ir="6">Montar o laudo</button>
+      </div>
+    </section>
+
+    <!-- Passo 7: laudo -->
+    <section class="passo" data-painel="6" aria-labelledby="t-passo-7" hidden>
+      <h2 id="t-passo-7">Laudo</h2>
+      <div class="cabecalho-laudo">
+        <label class="campo campo-largo">Paciente <input type="text" data-paciente maxlength="120" autocomplete="off"></label>
+        <label class="campo campo-largo">Data do exame <input type="text" data-data-exame maxlength="40" autocomplete="off" placeholder="dd/mm/aaaa"></label>
+        <p class="nota">Preenchidos à mão e usados só no laudo. A ferramenta não lê nome nem dados do paciente no DICOM.</p>
+      </div>
+      <div class="tabelas-laudo" data-tabelas-laudo></div>
+      <div class="exportar">
+        <button type="button" class="mnp-btn" data-copiar="tabela">Copiar tabelas</button>
+        <button type="button" class="mnp-btn" data-copiar="tudo">Copiar laudo</button>
+        <button type="button" class="mnp-btn" data-exportar="csv">Baixar CSV</button>
+        <button type="button" class="mnp-btn" data-exportar="xlsx">Baixar Excel</button>
+        <button type="button" class="mnp-btn" data-exportar="protocolo" title="Arquivos, filtro, eixos e escores, para refazer em lote no computador">Baixar protocolo (.json)</button>
+        <button type="button" class="mnp-btn mnp-btn--principal" data-acao="imprimir">Imprimir ou salvar PDF</button>
+      </div>
+      <p class="nota" data-status-copia role="status" aria-live="polite"></p>
+      <section class="bloco-laudo" aria-labelledby="t-laudo">
+        <h2 id="t-laudo">Laudo de processamento</h2>
+        <div class="laudo-previa" data-laudo></div>
+      </section>
+      <div class="acoes">
+        <button type="button" class="mnp-btn" data-ir="5">Voltar</button>
+      </div>
+    </section>
+  </section>
+</main>
+
+<div id="area-impressao" aria-hidden="true"></div>
+
+<footer class="rodape nao-imprime">
+  <p>MedNuclear Pragmática · por Felipe Mourato</p>
+  <p data-versoes>Núcleo carregando…</p>
+  <p>Código aberto: <a href="https://github.com/felipe-mourato/mednuclearpragmatica-site/tree/main/nucleo">núcleo em Python</a> · <a href="https://github.com/felipe-mourato/mednuclearpragmatica-site/blob/main/nucleo/CHANGELOG.md">histórico de versões</a></p>
+</footer>
+
+<div class="menu-contexto" role="menu" hidden>
+  <button type="button" role="menuitemradio" data-cinza="normal">Escala de cinza</button>
+  <button type="button" role="menuitemradio" data-cinza="invertida">Cinza invertida</button>
+  <hr>
+  <button type="button" role="menuitem" data-cinza="resetar">Restaurar brilho e contraste</button>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>

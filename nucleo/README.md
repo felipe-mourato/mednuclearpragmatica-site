@@ -8,7 +8,8 @@ Núcleo de processamento das ferramentas de medicina nuclear da [MedNuclear Prag
 
 | Módulo | Conteúdo |
 | --- | --- |
-| `mnp_nucleo.comum.dicom` | Leitura de DICOM não comprimido, rescale, multiframe, horário com alternativas |
+| `mnp_nucleo.comum.dicom` | Leitura de DICOM não comprimido ou em JPEG sem perdas, rescale, multiframe, horário com alternativas |
+| `mnp_nucleo.comum.jpeg_sem_perdas` | Decodificador de JPEG sem perdas (processo 14) em Python puro |
 | `mnp_nucleo.comum.roi` | Polígonos: máscara, espelhamento, translação, área |
 | `mnp_nucleo.comum.contagens` | Soma em ROI, média geométrica, correção de decaimento |
 | `mnp_nucleo.comum.exibicao` | Janela e inversão de cinza (só exibição) |
@@ -17,7 +18,8 @@ Núcleo de processamento das ferramentas de medicina nuclear da [MedNuclear Prag
 | `mnp_nucleo.comum.png` | Codificador PNG sem dependências (figuras do laudo) |
 | `mnp_nucleo.gastrico` | Esvaziamento gástrico: segmentação proximal/distal, cálculos, sessão, laudo, lote |
 | `mnp_nucleo.dmsa` | Cintilografia renal com DMSA: incidências, fundo perirrenal, função relativa, figuras, sessão, laudo, lote |
-| `mnp_nucleo.fantomas` | DICOMs sintéticos com contagens conhecidas |
+| `mnp_nucleo.perfusao` | Perfusão miocárdica (SPECT): projeções NM, controle de qualidade, FBP com Butterworth, eixos, cortes, mapa polar, escores, sessão, laudo, lote |
+| `mnp_nucleo.fantomas` | DICOMs sintéticos com contagens conhecidas (inclusive projeções de SPECT) |
 
 Cada função de cálculo traz na docstring a fórmula e a referência.
 
@@ -45,6 +47,12 @@ Para o DMSA, o mesmo com `mnp-dmsa` (ou `python -m mnp_nucleo.dmsa`); o protocol
 mnp-dmsa protocolo.json --pasta pasta-dos-dicoms/ --csv resultado.csv --laudo laudo.html
 ```
 
+Para a perfusão miocárdica, `mnp-perfusao` (ou `python -m mnp_nucleo.perfusao`): o protocolo guarda os arquivos, o filtro, os eixos (em mm) e os escores; o lote reconstrói, reorienta e recalcula o mapa polar e os escores:
+
+```
+mnp-perfusao protocolo.json --pasta pasta-dos-dicoms/ --csv resultado.csv --laudo laudo.html
+```
+
 O resultado é o mesmo do navegador, porque o código é o mesmo. Os nomes de arquivo podem conter dados do paciente: renomeie antes de compartilhar um protocolo.
 
 ## Fantoma de conferência
@@ -59,6 +67,10 @@ print(f.retencao, f.distribuicao)  # valores que a ferramenta deve devolver
 from mnp_nucleo.fantomas import fantoma_dmsa
 d = fantoma_dmsa()
 print(d.esperado)  # função relativa do rim direito: 44,0% posterior; 50,0% corrigida pelo tamanho
+
+from mnp_nucleo.fantomas import fantoma_perfusao
+p = fantoma_perfusao()
+print(p.eixo, p.segmentos_defeito)  # eixo verdadeiro do VE; defeito lateral no estresse (5, 6, 11, 12)
 ```
 
 ## Lançar uma versão

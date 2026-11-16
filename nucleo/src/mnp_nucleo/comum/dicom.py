@@ -1,9 +1,10 @@
 """Leitura de arquivos DICOM de medicina nuclear (pydicom + NumPy).
 
-Escopo: DICOM não comprimido (sintaxes de transferência nativas), imagem
+Escopo: DICOM não comprimido (sintaxes de transferência nativas) ou JPEG
+sem perdas (processo 14, decodificado por :mod:`.jpeg_sem_perdas`), imagem
 monocromática (1 amostra por pixel), 8, 16 ou 32 bits, com ou sem sinal,
-quadro único ou multiframe. Arquivos comprimidos e outros casos fora do
-escopo geram :class:`ErroDicom` com mensagem em português para o usuário.
+quadro único ou multiframe. Outras compressões e casos fora do escopo geram
+:class:`ErroDicom` com mensagem em português para o usuário.
 
 Os dados de identificação do paciente (nome, nascimento, prontuário) não são
 lidos nem guardados: só a geometria, os pixels, os horários e a descrição
@@ -22,6 +23,8 @@ import numpy as np
 import pydicom
 from pydicom.errors import InvalidDicomError
 
+from .jpeg_sem_perdas import SINTAXES_JPEG_SEM_PERDAS, ErroJpeg, decodificar_jpeg_sem_perdas
+
 __all__ = [
     "ErroDicom",
     "ImagemDicom",
@@ -31,6 +34,8 @@ __all__ = [
     "combinar_data_hora",
     "adivinhar_vista",
     "como_bytes",
+    "abrir_dataset",
+    "pixels_brutos",
 ]
 
 # Ordem de procura do horário de aquisição (atributo, tag).
@@ -234,6 +239,69 @@ def _abrir(dados: bytes):
     return ds
 
 
+def abrir_dataset(dados):
+    """Abre o DICOM (pydicom) e confere a sintaxe de transferência.
+
+    Devolve ``(ds, sintaxe)``. Aceita sintaxes nativas e JPEG sem perdas;
+    as demais compressões geram :class:`ErroDicom`.
+    """
+    dados = como_bytes(dados)
+    if len(dados) < 132:
+        raise ErroDicom("Arquivo pequeno demais para ser um DICOM.")
+    ds = _abrir(dados)
+    meta = getattr(ds, "file_meta", None)
+    sintaxe_uid = getattr(meta, "TransferSyntaxUID", None) if meta is not None else None
+    if sintaxe_uid is not None and sintaxe_uid.is_compressed and str(sintaxe_uid) not in SINTAXES_JPEG_SEM_PERDAS:
+        raise ErroDicom(
+            f"DICOM comprimido não suportado ({sintaxe_uid.name}). Exporte as imagens sem "
+            "compressão (Explicit ou Implicit VR Little Endian) na estação de trabalho."
+        )
+    sintaxe = sintaxe_uid.name if sintaxe_uid is not None else "não informada (lida como Implicit VR Little Endian)"
+    return ds, str(sintaxe)
+
+
+def pixels_brutos(ds) -> np.ndarray:
+    """Pixels sem rescale, forma (quadros, linhas, colunas).
+
+    JPEG sem perdas é decodificado por :func:`.jpeg_sem_perdas.decodificar_jpeg_sem_perdas`
+    (um fragmento por quadro, como manda o DICOM PS3.5, A.4); o resultado é
+    convertido para o tipo declarado em BitsAllocated e PixelRepresentation.
+    """
+    linhas = int(ds.get("Rows", 0) or 0)
+    colunas = int(ds.get("Columns", 0) or 0)
+    meta = getattr(ds, "file_meta", None)
+    sintaxe_uid = getattr(meta, "TransferSyntaxUID", None) if meta is not None else None
+    if sintaxe_uid is not None and str(sintaxe_uid) in SINTAXES_JPEG_SEM_PERDAS:
+        from pydicom.encaps import generate_frames
+
+        n = int(ds.get("NumberOfFrames", 1) or 1)
+        try:
+            quadros = [decodificar_jpeg_sem_perdas(f) for f in generate_frames(ds.PixelData, number_of_frames=n)]
+        except ErroJpeg as erro:
+            raise ErroDicom(f"Não foi possível descomprimir as imagens: {erro}") from None
+        except Exception as erro:  # noqa: BLE001
+            raise ErroDicom("Não foi possível descomprimir as imagens (JPEG sem perdas).") from erro
+        if len(quadros) != n or any(q.shape != (linhas, colunas) for q in quadros):
+            raise ErroDicom("Dados de pixel com dimensões diferentes das declaradas no cabeçalho.")
+        bits = int(ds.get("BitsAllocated", 16) or 16)
+        sinal = int(ds.get("PixelRepresentation", 0) or 0) == 1
+        tipo = {8: (np.uint8, np.int8), 16: (np.uint16, np.int16), 32: (np.uint32, np.int32)}[bits][sinal]
+        return np.stack(quadros).astype(tipo)
+    try:
+        brutos = ds.pixel_array
+    except Exception as erro:  # noqa: BLE001
+        raise ErroDicom(
+            "Não foi possível ler os pixels: os dados de imagem estão incompletos ou em formato "
+            "não suportado."
+        ) from erro
+    brutos = np.asarray(brutos)
+    if brutos.ndim == 2:
+        brutos = brutos[np.newaxis, :, :]
+    if brutos.ndim != 3 or brutos.shape[1:] != (linhas, colunas):
+        raise ErroDicom("Dados de pixel com dimensões diferentes das declaradas no cabeçalho.")
+    return brutos
+
+
 def ler_dicom(dados) -> ImagemDicom:
     """Lê um arquivo DICOM não comprimido e devolve uma :class:`ImagemDicom`.
 
@@ -257,18 +325,7 @@ def ler_dicom(dados) -> ImagemDicom:
         de bits fora do escopo. A mensagem é para o usuário final.
     """
     dados = como_bytes(dados)
-    if len(dados) < 132:
-        raise ErroDicom("Arquivo pequeno demais para ser um DICOM.")
-    ds = _abrir(dados)
-
-    meta = getattr(ds, "file_meta", None)
-    sintaxe_uid = getattr(meta, "TransferSyntaxUID", None) if meta is not None else None
-    if sintaxe_uid is not None and sintaxe_uid.is_compressed:
-        raise ErroDicom(
-            f"DICOM comprimido não suportado ({sintaxe_uid.name}). Exporte as imagens sem "
-            "compressão (Explicit ou Implicit VR Little Endian) na estação de trabalho."
-        )
-    sintaxe = sintaxe_uid.name if sintaxe_uid is not None else "não informada (lida como Implicit VR Little Endian)"
+    ds, sintaxe = abrir_dataset(dados)
 
     linhas = int(ds.get("Rows", 0) or 0)
     colunas = int(ds.get("Columns", 0) or 0)
@@ -291,18 +348,7 @@ def ler_dicom(dados) -> ImagemDicom:
         )
     representacao = int(ds.get("PixelRepresentation", 0) or 0)
 
-    try:
-        brutos = ds.pixel_array
-    except Exception as erro:  # noqa: BLE001
-        raise ErroDicom(
-            "Não foi possível ler os pixels: os dados de imagem estão incompletos ou em formato "
-            "não suportado."
-        ) from erro
-    brutos = np.asarray(brutos)
-    if brutos.ndim == 2:
-        brutos = brutos[np.newaxis, :, :]
-    if brutos.ndim != 3 or brutos.shape[1:] != (linhas, colunas):
-        raise ErroDicom("Dados de pixel com dimensões diferentes das declaradas no cabeçalho.")
+    brutos = pixels_brutos(ds)
 
     inclinacao = _numero(ds, "RescaleSlope", 1.0)
     intercepto = _numero(ds, "RescaleIntercept", 0.0)
