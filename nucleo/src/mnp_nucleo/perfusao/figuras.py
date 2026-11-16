@@ -12,8 +12,9 @@ from .polar import geometria_segmentos, segmento_em
 
 __all__ = ["MAPAS", "colorir", "ampliar", "faixa_rgba", "polar_rgba", "png", "rgba_bytes"]
 
-#: Escalas de cor: cinza; cinza invertida; "quente" (preto → vermelho → amarelo → branco), monotônica em luminância.
-MAPAS = ("cinza", "invertida", "quente")
+#: Escalas de cor: cinza; cinza invertida; "quente" (preto → vermelho → amarelo → branco) e
+#: "fria" (cool: preto → azul → ciano → branco), as duas monotônicas em luminância.
+MAPAS = ("cinza", "invertida", "quente", "fria")
 _QUENTE = np.array(
     [
         [0.00, 0, 0, 0],
@@ -23,6 +24,16 @@ _QUENTE = np.array(
         [1.00, 255, 255, 255],
     ]
 )
+_FRIA = np.array(
+    [
+        [0.00, 0, 0, 0],
+        [0.30, 10, 30, 160],
+        [0.55, 20, 110, 235],
+        [0.80, 80, 220, 250],
+        [1.00, 255, 255, 255],
+    ]
+)
+_TABELAS = {"quente": _QUENTE, "fria": _FRIA}
 FUNDO = (12, 20, 30)
 
 
@@ -31,8 +42,9 @@ def colorir(valores: np.ndarray, teto: float, mapa: str = "quente", piso: float 
     v = np.asarray(valores, dtype=np.float64)
     nan = ~np.isfinite(v)
     t = np.clip((np.nan_to_num(v) - piso) / max(teto - piso, 1e-9), 0.0, 1.0)
-    if mapa == "quente":
-        rgb = np.stack([np.interp(t, _QUENTE[:, 0], _QUENTE[:, k]) for k in (1, 2, 3)], axis=-1)
+    if mapa in _TABELAS:
+        tab = _TABELAS[mapa]
+        rgb = np.stack([np.interp(t, tab[:, 0], tab[:, k]) for k in (1, 2, 3)], axis=-1)
     else:
         g = 255.0 * (1.0 - t if mapa == "invertida" else t)
         rgb = np.stack([g, g, g], axis=-1)

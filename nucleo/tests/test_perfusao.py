@@ -387,3 +387,19 @@ def test_protocolo_e_lote(sessao_pronta, fp, tmp_path):
     original = sessao_pronta.mapa_polar("estresse").valores_segmentos()
     s2 = Sessao.de_protocolo(prot, lambda n, h: fp.arquivos[n])
     assert s2.mapa_polar("estresse").valores_segmentos() == original
+
+
+def test_escala_fria_monotonica():
+    t = np.linspace(0, 1, 11)
+    rgb = figuras.colorir(t, 1.0, "fria").astype(float)
+    lum = rgb @ [0.2126, 0.7152, 0.0722]
+    assert np.all(np.diff(lum) > 0)
+    assert tuple(rgb[0]) == (0, 0, 0) and tuple(rgb[-1]) == (255, 255, 255)
+    assert rgb[5, 2] > rgb[5, 0]  # meio da escala: azul predomina
+
+
+def test_sessao_aceita_mapa_fria(sessao_pronta):
+    assert cmd(sessao_pronta, acao="definir_mapa", mapa="fria")["ok"]
+    assert len(sessao_pronta.imagem({"fonte": "polar", "estudo": "estresse"})) == 256 * 256 * 4
+    assert not cmd(sessao_pronta, acao="definir_mapa", mapa="arco-iris")["ok"]
+    cmd(sessao_pronta, acao="definir_mapa", mapa="quente")
