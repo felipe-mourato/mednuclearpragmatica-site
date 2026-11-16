@@ -34,6 +34,8 @@ __all__ = ["Sessao", "ErroSessao", "ESTUDOS", "ROTULO_ESTUDO"]
 ESTUDOS = ("estresse", "repouso", "prona_estresse", "prona_repouso")
 ROTULO_ESTUDO = {"estresse": "Estresse", "repouso": "Repouso", "prona_estresse": "Prona do estresse", "prona_repouso": "Prona do repouso"}
 PONTUADOS = ("estresse", "repouso")
+#: Pares exibidos lado a lado: o eixo curto dos dois usa o mesmo comprimento (o maior).
+PARES = (("estresse", "repouso"), ("prona_estresse", "prona_repouso"))
 LADO_POLAR = 256
 FATOR_CORTES = 4
 
@@ -271,6 +273,14 @@ class Sessao:
         self._eixo_fonte[para] = self._fonte(para)[0].id
         self._polar.pop(para, None)
 
+    def comprimento_par(self, estudo) -> float | None:
+        """Comprimento comum do eixo curto no par (estresse e repouso; pronas): o maior dos eixos traçados."""
+        for par in PARES:
+            if estudo in par:
+                comps = [self.eixos[e].comprimento for e in par if e in self.eixos]
+                return max(comps) if comps else None
+        return self.eixos[estudo].comprimento if estudo in self.eixos else None
+
     def apagar_eixo(self, estudo) -> None:
         self.eixos.pop(estudo, None)
         self._polar.pop(estudo, None)
@@ -393,7 +403,7 @@ class Sessao:
             return self._cinza(valores, pedido, self._janela_volume(estudo))
         if fonte == "faixa":
             vol, e = self.volume(estudo), self._eixo(estudo)
-            _, ims = eixos.cortes(vol, e, str(pedido.get("tipo", "SA")))
+            _, ims = eixos.cortes(vol, e, str(pedido.get("tipo", "SA")), comprimento=self.comprimento_par(estudo))
             return figuras.faixa_rgba(ims, self._teto(estudo), pedido.get("mapa") or self.mapa, FATOR_CORTES).tobytes()
         if fonte == "previa":
             vol, e = self.volume(estudo), self._eixo(estudo)
@@ -437,7 +447,7 @@ class Sessao:
             lado = int(round(eixos.LADO_CORTE_MM / vol.pixel_mm))
             tipos = {}
             for tipo in ("SA", "VLA", "HLA"):
-                pos = eixos.posicoes(e, vol.pixel_mm, tipo)
+                pos = eixos.posicoes(e, vol.pixel_mm, tipo, self.comprimento_par(est))
                 n = len(pos)
                 tipos[tipo] = {
                     "n": n,
@@ -587,7 +597,7 @@ class Sessao:
             for e in self.estudos_disponiveis():
                 if e not in self.eixos:
                     continue
-                _, ims = eixos.cortes(self.volume(e), self.eixos[e], tipo)
+                _, ims = eixos.cortes(self.volume(e), self.eixos[e], tipo, comprimento=self.comprimento_par(e))
                 cortes[tipo].append((ROTULO_ESTUDO[e], figuras.png(figuras.faixa_rgba(ims, self._teto(e), self.mapa, 3))))
         polares = []
         for e in PONTUADOS:
@@ -783,7 +793,7 @@ class Sessao:
             return figuras.png(figuras.polar_rgba(mp.imagem(LADO_POLAR), mp.rho_apice, self.mapa, self.escores.get(e) if e in PONTUADOS else None))
         if formato == "png_cortes":
             e = pedido["estudo"]
-            _, ims = eixos.cortes(self.volume(e), self._eixo(e), pedido.get("tipo", "SA"))
+            _, ims = eixos.cortes(self.volume(e), self._eixo(e), pedido.get("tipo", "SA"), comprimento=self.comprimento_par(e))
             return figuras.png(figuras.faixa_rgba(ims, self._teto(e), self.mapa, FATOR_CORTES))
         self._resultados()
         r = self.calcular_escores()

@@ -13,7 +13,10 @@ from .polar import geometria_segmentos, segmento_em
 __all__ = ["MAPAS", "colorir", "ampliar", "faixa_rgba", "polar_rgba", "png", "rgba_bytes"]
 
 #: Escalas de cor: cinza; cinza invertida; "quente" (preto → vermelho → amarelo → branco) e
-#: "fria" (cool: preto → azul → ciano → branco), as duas monotônicas em luminância.
+#: "fria" (cool, semelhante à GE Color: preto → azul → violeta → rosa → laranja → amarelo →
+#: branco), as duas monotônicas em luminância. A "cool" das estações de medicina nuclear
+#: (também chamada GE Color) é descrita como preto, azul, rosa, violeta, amarelo e branco;
+#: esta é uma aproximação própria nessa sequência, não a tabela do fabricante.
 MAPAS = ("cinza", "invertida", "quente", "fria")
 _QUENTE = np.array(
     [
@@ -27,9 +30,12 @@ _QUENTE = np.array(
 _FRIA = np.array(
     [
         [0.00, 0, 0, 0],
-        [0.30, 10, 30, 160],
-        [0.55, 20, 110, 235],
-        [0.80, 80, 220, 250],
+        [0.15, 10, 10, 120],
+        [0.32, 60, 40, 200],
+        [0.48, 150, 50, 190],
+        [0.62, 230, 70, 140],
+        [0.76, 250, 140, 60],
+        [0.90, 255, 225, 90],
         [1.00, 255, 255, 255],
     ]
 )

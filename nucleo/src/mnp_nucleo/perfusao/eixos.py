@@ -172,14 +172,17 @@ def _grade(centro, dir_col, dir_lin, pixel_mm, n):
     return centro + (cc[..., None] * dir_col + rr[..., None] * dir_lin) * pixel_mm
 
 
-def posicoes(eixo: Eixo, pixel_mm: float, tipo: str) -> np.ndarray:
+def posicoes(eixo: Eixo, pixel_mm: float, tipo: str, comprimento: float | None = None) -> np.ndarray:
     """Distâncias (mm) dos cortes ao longo do eixo de empilhamento.
 
     Eixo curto: do ápice (0) para a base (+), com ``MARGEM_FATIAS`` a mais
-    de cada lado. Longos: de −35 a +35 mm do eixo, de pixel em pixel.
+    de cada lado. ``comprimento`` (mm) substitui o do eixo para parear
+    estudos: estresse e repouso usam o maior dos dois e ficam com o mesmo
+    número de cortes, alinhados a partir do ápice. Longos: de −35 a +35 mm
+    do eixo, de pixel em pixel.
     """
     if tipo == "SA":
-        n = int(np.floor(eixo.comprimento / pixel_mm))
+        n = int(np.floor((comprimento or eixo.comprimento) / pixel_mm))
         return np.arange(-MARGEM_FATIAS, n + 1 + MARGEM_FATIAS) * pixel_mm
     m = int(np.floor(MEIA_LARGURA_LONGO_MM / pixel_mm))
     return np.arange(-m, m + 1) * pixel_mm
@@ -206,9 +209,9 @@ def corte(vol: Volume, eixo: Eixo, tipo: str, distancia_mm: float, n: int | None
     return vol.amostrar(pts)
 
 
-def cortes(vol: Volume, eixo: Eixo, tipo: str, n: int | None = None) -> tuple[np.ndarray, np.ndarray]:
+def cortes(vol: Volume, eixo: Eixo, tipo: str, n: int | None = None, comprimento: float | None = None) -> tuple[np.ndarray, np.ndarray]:
     """Pilha de cortes de um tipo: (distâncias em mm, imagens (cortes, n, n))."""
-    pos = posicoes(eixo, vol.pixel_mm, tipo)
+    pos = posicoes(eixo, vol.pixel_mm, tipo, comprimento)
     return pos, np.stack([corte(vol, eixo, tipo, float(d), n) for d in pos])
 
 

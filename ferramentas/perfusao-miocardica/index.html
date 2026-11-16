@@ -161,7 +161,8 @@
     <section class="passo" data-painel="3" aria-labelledby="t-passo-4" hidden>
       <h2 id="t-passo-4">Eixo longo do VE</h2>
       <div class="instrucoes">
-        <p><strong>1.</strong> No transaxial, escolha o corte que passa pelo meio do VE e arraste <strong>da base (plano valvar) até o ápice</strong>. <strong>2.</strong> No plano vertical, que contém essa linha, ajuste a base e o ápice de novo (o VE costuma descer para o ápice). Arraste as pontas para corrigir. É o traçado manual clássico em duas etapas (Germano, 2001).</p>
+        <p><strong>1.</strong> No transaxial, escolha o corte que passa pelo meio do VE e arraste <strong>da base (plano valvar) até o ápice</strong>. <strong>2.</strong> No plano vertical, que contém essa linha, ajuste a base e o ápice de novo (o VE costuma descer para o ápice). Arraste as pontas para corrigir, ou o meio da linha para deslocá-la inteira sem mudar inclinação nem comprimento. É o traçado manual clássico em duas etapas (Germano, 2001).</p>
+        <p>No repouso, comece pelo botão <strong>Copiar a linha do estresse</strong>: a linha vem na mesma posição do paciente (a diferença de mesa entre as aquisições é compensada) e você só desloca se o coração estiver em outro lugar. O eixo curto do estresse e do repouso usa o mesmo comprimento (o do maior eixo), então os dois ficam com o mesmo número de cortes, alinhados a partir do ápice.</p>
         <p class="nota">A prévia embaixo mostra o eixo curto, o eixo longo vertical e o horizontal do meio do VE: confira se o eixo curto é um anel centrado e se as ferraduras estão simétricas. Mudar a linha do transaxial refaz a do plano vertical.</p>
       </div>
       <div class="abas" role="tablist" aria-label="Estudo" data-abas-eixo></div>
@@ -193,7 +194,7 @@
       <div class="controles-cortes">
         <span class="alternar" role="group" aria-label="Escala de cor">
           <button type="button" data-mapa="quente">Quente</button>
-          <button type="button" data-mapa="fria">Fria (cool)</button>
+          <button type="button" data-mapa="fria">Cool (tipo GE Color)</button>
           <button type="button" data-mapa="cinza">Cinza</button>
           <button type="button" data-mapa="invertida">Cinza invertida</button>
         </span>
@@ -215,6 +216,18 @@
         <p>Escolha o escore e clique nos segmentos do mapa (ou use as listas da tabela). Escala: 0 normal; 1 hipocaptação discreta; 2 moderada; 3 acentuada; 4 ausência de captação (SBC 2020; ASNC 2017). A pontuação é sua: a captação em % do máximo do VE ajuda a conferir, mas não há banco de normalidade.</p>
       </div>
       <div class="pincel" role="radiogroup" aria-label="Escore a aplicar" data-pincel></div>
+      <details class="cortes-pontuar" open>
+        <summary>Cortes de estresse e repouso para pontuar</summary>
+        <div class="controles-cortes">
+          <span class="alternar" role="group" aria-label="Escala de cor dos cortes">
+            <button type="button" data-mapa="quente">Quente</button>
+            <button type="button" data-mapa="fria">Cool (tipo GE Color)</button>
+            <button type="button" data-mapa="cinza">Cinza</button>
+            <button type="button" data-mapa="invertida">Cinza invertida</button>
+          </span>
+        </div>
+        <div data-cortes-polar></div>
+      </details>
       <span class="alternar" role="group" aria-label="O que escrever no mapa">
         <button type="button" data-rotulos="escores" aria-pressed="true">Escores</button>
         <button type="button" data-rotulos="captacao" aria-pressed="false">Captação (%)</button>

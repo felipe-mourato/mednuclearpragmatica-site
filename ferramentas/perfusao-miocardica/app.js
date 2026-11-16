@@ -183,7 +183,7 @@
     $('[data-validacao="0"]').textContent = estado?.arquivos.length ? v.arquivos || '' : '';
     $('[data-validacao="3"]').textContent = v.eixos || '';
     visores.clear();
-    [renderArquivos, renderQC, renderRecon, renderEixos, renderCortes, renderPolar, renderLaudo][passo]();
+    [renderArquivos, renderQC, renderRecon, renderEixos, renderCortes, renderPasso6, renderLaudo][passo]();
   }
 
   function blocoAvisos(seletor, extras = []) {
@@ -601,7 +601,19 @@
       const d = (q) => Math.hypot(q[0] - p[0], q[1] - p[1]);
       if (d(l.apice) < 2.5) return 'apice';
       if (d(l.base) < 2.5) return 'base';
+      // no corpo da linha: arrasta a linha inteira (mesma inclinação e comprimento)
+      const vx = l.apice[0] - l.base[0], vy = l.apice[1] - l.base[1];
+      const t = Math.max(0, Math.min(1, ((p[0] - l.base[0]) * vx + (p[1] - l.base[1]) * vy) / (vx * vx + vy * vy || 1)));
+      if (d([l.base[0] + t * vx, l.base[1] + t * vy]) < 2) return 'linha';
       return null;
+    };
+    let origem = null; // {p, l}: onde começou o arraste da linha inteira
+    const mover = (rasc, p) => {
+      if (pegando === 'linha') {
+        const dx = p[0] - origem.p[0], dy = p[1] - origem.p[1];
+        rasc.base = [origem.l.base[0] + dx, origem.l.base[1] + dy];
+        rasc.apice = [origem.l.apice[0] + dx, origem.l.apice[1] + dy];
+      } else rasc[pegando] = p;
     };
 
     const trans = new Visor({
@@ -611,14 +623,14 @@
       aoApertar: (p) => {
         const l = linha1();
         const qual = perto(l, p);
-        pegando = qual;
+        pegando = qual || 'apice';
+        origem = { p, l };
         rascunho1 = qual ? { base: [...l.base], apice: [...l.apice] } : { base: p, apice: p };
-        if (!qual) pegando = 'apice';
         trans.sobrepor();
       },
       aoMover: (p) => {
         if (!rascunho1) return;
-        rascunho1[pegando] = p;
+        mover(rascunho1, p);
         trans.sobrepor();
         planoAoVivo();
       },
@@ -626,7 +638,9 @@
         const l = rascunho1;
         rascunho1 = null;
         if (!l || Math.hypot(l.apice[0] - l.base[0], l.apice[1] - l.base[1]) < 2) { trans.sobrepor(); return; }
-        const r = cmd({ acao: 'definir_eixo', estudo: e.estudo, corte: corteAtual(e), base_1: l.base, apice_1: l.apice });
+        // Linha inteira deslocada: a 2ª etapa é relativa ao meio da linha, então o eixo 3D só translada.
+        const segunda = pegando === 'linha' && e.eixo ? { base_2: e.eixo.base_2, apice_2: e.eixo.apice_2 } : {};
+        const r = cmd({ acao: 'definir_eixo', estudo: e.estudo, corte: corteAtual(e), base_1: l.base, apice_1: l.apice, ...segunda });
         if (!r.ok) avisar(r.erro);
         render();
       },
@@ -636,16 +650,17 @@
       pedido: () => (rascunho1 && Math.hypot(rascunho1.apice[0] - rascunho1.base[0], rascunho1.apice[1] - rascunho1.base[1]) >= 2
         ? { fonte: 'plano_vertical', estudo: e.estudo, corte: corteAtual(e), base_1: rascunho1.base, apice_1: rascunho1.apice }
         : { fonte: 'plano_vertical', estudo: e.estudo }),
-      sobre: () => (rascunho1 ? '' : desenharLinha(linha2())),
+      sobre: () => (rascunho1 && pegando !== 'linha' ? '' : desenharLinha(linha2())),
       aoApertar: (p) => {
         if (!e.eixo) return;
         const l = linha2();
         const qual = perto(l, p);
         pegando = qual || 'apice';
+        origem = { p, l };
         rascunho2 = qual ? { base: [...l.base], apice: [...l.apice] } : { base: p, apice: p };
         plano.sobrepor();
       },
-      aoMover: (p) => { if (rascunho2) { rascunho2[pegando] = p; plano.sobrepor(); } },
+      aoMover: (p) => { if (rascunho2) { mover(rascunho2, p); plano.sobrepor(); } },
       aoSoltar: () => {
         const l = rascunho2;
         rascunho2 = null;
@@ -669,7 +684,14 @@
       $('[data-visor-plano]').innerHTML = '<div class="visor visor-vazio"><p>Trace primeiro a linha no transaxial.</p></div>';
     }
     const acoes = [];
-    const outros = estado.estudos.filter((x) => x.estudo !== e.estudo && x.eixo);
+    // Par natural: repouso ← estresse (e prona repouso ← prona estresse). Copiar mantém a mesma linha,
+    // em mm do paciente, e o eixo curto dos dois fica com o mesmo número de cortes.
+    const parDe = { repouso: 'estresse', prona_repouso: 'prona_estresse' }[e.estudo];
+    const par = parDe && estudoPorNome(parDe);
+    if (par?.eixo) {
+      acoes.push(`<button type="button" class="mnp-btn ${e.eixo ? 'mnp-btn--pequeno' : 'mnp-btn--principal'}" data-copiar-eixo="${par.estudo}">${e.eixo ? 'Copiar de novo' : 'Copiar'} a linha do ${esc(par.rotulo.toLowerCase())}</button>`);
+    }
+    const outros = estado.estudos.filter((x) => x.estudo !== e.estudo && x.eixo && x.estudo !== parDe);
     for (const o of outros) acoes.push(`<button type="button" class="mnp-btn mnp-btn--pequeno" data-copiar-eixo="${o.estudo}">Copiar o eixo do ${esc(o.rotulo.toLowerCase())} e ajustar</button>`);
     if (e.eixo) acoes.push(`<button type="button" class="mnp-btn mnp-btn--pequeno" data-acao="apagar-eixo">Apagar o eixo</button>`);
     if (estado.arquivos.some((a) => a.nome.startsWith('fantoma_'))) acoes.push('<button type="button" class="mnp-btn mnp-btn--pequeno" data-acao="eixo-fantoma">Usar o eixo verdadeiro do fantoma (todos os estudos)</button>');
@@ -680,7 +702,7 @@
       const info = cmd({ acao: 'cortes' }).cortes[e.estudo];
       const lado = info.tipos.SA.lado;
       previa.appendChild(imagemColorida({ fonte: 'previa', estudo: e.estudo }, 3 * lado + 12, lado, 'previa-img'));
-      previa.insertAdjacentHTML('beforeend', `<p class="nota">Eixo curto (meio do VE) · eixo longo vertical · eixo longo horizontal. Comprimento do eixo: ${num(info.comprimento_mm, 0)} mm.</p>`);
+      previa.insertAdjacentHTML('beforeend', `<p class="nota">Eixo curto (meio do VE) · eixo longo vertical · eixo longo horizontal. Comprimento do eixo: ${num(info.comprimento_mm, 0)} mm · ${info.tipos.SA.n} cortes no eixo curto${par || e.estudo in { estresse: 1, prona_estresse: 1 } ? ' (o par estresse–repouso usa o comprimento do maior eixo, para ter o mesmo número de cortes)' : ''}.</p>`);
     } else {
       previa.innerHTML = '<p class="nota">A prévia aparece depois que o eixo for traçado.</p>';
     }
@@ -692,13 +714,17 @@
     $$('[data-mapa]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.mapa === estado.mapa)));
     const info = cmd({ acao: 'cortes' }).cortes;
     $('[data-tetos]').innerHTML = estado.estudos.map((e) => `<label class="campo">Teto ${esc(e.rotulo.toLowerCase())} <input type="range" min="50" max="150" step="5" value="${info[e.estudo]?.teto ?? 100}" data-teto="${e.estudo}"> <span class="campo-nota">${info[e.estudo]?.teto ?? 100}%</span></label>`).join('');
-    const area = $('[data-cortes]');
+    montarCortes($('[data-cortes]'), estado.estudos, info);
+  }
+
+  function montarCortes(area, estudos, info) {
+    /* Faixas por tipo de corte; estresse e repouso uma embaixo da outra, com o mesmo número de cortes no eixo curto. */
     area.innerHTML = '';
     for (const [tipo, nome, ordem] of TIPOS_CORTE) {
       const bloco = document.createElement('section');
       bloco.className = 'bloco-cortes';
       bloco.innerHTML = `<h3 class="subtitulo">${esc(nome)} <span class="nota">(${esc(ordem)})</span></h3>`;
-      for (const e of estado.estudos) {
+      for (const e of estudos) {
         const t = info[e.estudo]?.tipos[tipo];
         if (!t) continue;
         const linha = document.createElement('div');
@@ -712,6 +738,15 @@
   }
 
   // ----------------------------------------------------------- passo 6
+  function renderPasso6() {
+    // Os cortes ficam acima dos mapas e só são refeitos ao entrar no passo ou trocar a escala,
+    // não a cada clique de escore.
+    $$('[data-mapa]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.mapa === estado.mapa)));
+    const info = cmd({ acao: 'cortes' }).cortes;
+    montarCortes($('[data-cortes-polar]'), estado.estudos.filter((e) => ['estresse', 'repouso'].includes(e.estudo)), info);
+    renderPolar();
+  }
+
   function renderPolar() {
     $('[data-pincel]').innerHTML = [0, 1, 2, 3, 4, null].map((v) => `<button type="button" role="radio" class="chip-escore ${v === null ? 'apagar' : `e${v}`}" data-pincel-valor="${v === null ? '' : v}" aria-checked="${pincel === v}">${v === null ? 'Apagar' : v}</button>`).join('')
       + '<span class="nota pincel-legenda">0 normal · 1 discreta · 2 moderada · 3 acentuada · 4 ausente</span>';

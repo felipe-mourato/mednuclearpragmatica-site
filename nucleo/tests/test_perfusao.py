@@ -395,7 +395,8 @@ def test_escala_fria_monotonica():
     lum = rgb @ [0.2126, 0.7152, 0.0722]
     assert np.all(np.diff(lum) > 0)
     assert tuple(rgb[0]) == (0, 0, 0) and tuple(rgb[-1]) == (255, 255, 255)
-    assert rgb[5, 2] > rgb[5, 0]  # meio da escala: azul predomina
+    assert rgb[3, 2] > rgb[3, 0]  # terço inferior: azul predomina
+    assert rgb[8, 0] > rgb[8, 2]  # terço superior: amarelo/laranja
 
 
 def test_sessao_aceita_mapa_fria(sessao_pronta):
@@ -403,3 +404,20 @@ def test_sessao_aceita_mapa_fria(sessao_pronta):
     assert len(sessao_pronta.imagem({"fonte": "polar", "estudo": "estresse"})) == 256 * 256 * 4
     assert not cmd(sessao_pronta, acao="definir_mapa", mapa="arco-iris")["ok"]
     cmd(sessao_pronta, acao="definir_mapa", mapa="quente")
+
+
+def test_estresse_e_repouso_com_o_mesmo_numero_de_cortes(fp):
+    s = Sessao()
+    for n in ("estresse.dcm", "repouso.dcm"):
+        s.adicionar_arquivo(n, fp.arquivos[n])
+    v = s.volume("estresse")
+    e = eixos.marcacoes_de_eixo(v, np.array(fp.eixo["base"]), np.array(fp.eixo["apice"]))
+    cmd(s, acao="definir_eixo", estudo="estresse", corte=e.corte_transaxial, base_1=e.base_1, apice_1=e.apice_1, base_2=e.base_2, apice_2=e.apice_2)
+    # repouso com eixo mais curto (ápice 15 mm mais perto da base)
+    base, apice = np.array(fp.eixo["base"]), np.array(fp.eixo["apice"])
+    curto = eixos.marcacoes_de_eixo(s.volume("repouso"), base, apice - 15 * (apice - base) / np.linalg.norm(apice - base))
+    cmd(s, acao="definir_eixo", estudo="repouso", corte=curto.corte_transaxial, base_1=curto.base_1, apice_1=curto.apice_1, base_2=curto.base_2, apice_2=curto.apice_2)
+    assert s.eixos["repouso"].comprimento < s.eixos["estresse"].comprimento - 10
+    c = cmd(s, acao="cortes")["cortes"]
+    assert c["estresse"]["tipos"]["SA"]["n"] == c["repouso"]["tipos"]["SA"]["n"]
+    assert s.comprimento_par("repouso") == pytest.approx(s.eixos["estresse"].comprimento)
