@@ -2,6 +2,28 @@
 
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e as versões seguem [versionamento semântico](https://semver.org/lang/pt-BR/). Toda entrada diz se algum número calculado muda em relação à versão anterior.
 
+## [0.4.0] - 2026-11-16
+
+Nenhum número do esvaziamento gástrico nem do DMSA muda: os subpacotes `gastrico` e `dmsa` não foram alterados e os testes deles passam como antes. A única mudança comum é que a leitura de DICOM passa a aceitar JPEG sem perdas (antes recusado com mensagem); os pixels lidos são idênticos aos do arquivo sem compressão.
+
+### Incluído
+
+- **Cintilografia de perfusão miocárdica, parte 1** (`mnp_nucleo.perfusao`, ferramenta em `/ferramentas/perfusao-miocardica/`).
+  - Projeções DICOM NM (TOMO e GATED TOMO), organizadas pelos vetores de quadro (detector, vista angular, intervalo do gated) e pelo ângulo inicial de cada detector; lateralidade pelo ImageOrientationPatient de cada detector. Arquivos já reconstruídos são recusados com mensagem. Tipos de aquisição (estresse, repouso, gated de cada um, prona de cada um) sugeridos pela descrição da série e pela posição do paciente, corrigíveis. Sem a aquisição não sincronizada, a soma dos intervalos do gated vira a imagem de perfusão (com aviso).
+  - Controle de qualidade: cine das projeções (soma ou intervalo do gated), sinograma de uma linha, linograma, contagens por projeção e, no gated, contagens por intervalo e os campos de batimentos que o fabricante gravar (aceitos, rejeitados, janela R-R, frequência).
+  - Reconstrução: Butterworth 2D nas projeções, B(f) = 1/(1 + (f/fc)^(2n)) (Germano, J Nucl Med 2001;42:1499-507; Lyra e Ploussi, Int J Biomed Imaging 2011, doi:10.1155/2011/693795), seguido de FBP com Ram-Lak (Kak e Slaney 1988). Padrão inicial ordem 11 e corte 0,45 Nyquist (Takavar 2004, citado por Lyra e Ploussi). O corte aparece em fração de Nyquist, ciclos/pixel e ciclos/cm.
+  - Reorientação manual em duas etapas (transaxial e plano vertical; Germano 2001), cópia do eixo entre estudos (em mm do paciente, o que acompanha a mesa) e cortes eixo curto, eixo longo vertical e horizontal na orientação de Cerqueira et al. (J Nucl Cardiol 2002;9:240-5, doi:10.1067/mnc.2002.123122).
+  - Mapa polar em 17 segmentos com os territórios coronarianos (ASNC 2017, Apêndice 6, doi:10.1007/s12350-017-1057-y; SBC 2020, Tabela 18, doi:10.36660/abc.20200087), captação de cada segmento em % do máximo do VE, e escores visuais 0–4 marcados pelo médico: SSS, SRS, SDS = SSS − SRS, percentual do VE = escore ÷ 68 (ASNC 2017) e faixas do SSS (SBC 2020).
+  - Saídas: faixas de cortes e mapas polares em PNG, tabelas, CSV, Excel, laudo HTML, protocolo (arquivos, filtro, eixos em mm, escores) e lote (`mnp-perfusao` ou `python -m mnp_nucleo.perfusao`).
+  - Fantomas `fantoma_perfusao()` (VE com defeito lateral no estresse, repouso normal, fígado, foco intestinal, gated de 8 intervalos com arritmia no estresse, na geometria de uma câmera de duas cabeças a 90°) e `fantoma_ponto()` (fonte pontual para conferir posição e lateralidade).
+- `comum.jpeg_sem_perdas`: decodificador de JPEG sem perdas (processo 14, preditores 1 a 7) em Python puro, conferido bit a bit com o pylibjpeg; `fantomas.codificar_jpeg_sem_perdas` e `fantomas.gerar_dicom_nm`.
+
+### Desvios declarados em relação às fontes
+
+- A amostragem do mapa polar é própria (perfil de contagem máxima ao longo de raios a partir do eixo, com centro apical a 30% do comprimento, entre 10 e 40 mm) e não a do QPS (Germano et al., J Nucl Med 2000;41:712-9), que depende da detecção automática das bordas do VE (Germano 1995) e entra na fase do gated.
+- Sem banco de normalidade: a captação por segmento não classifica nada como anormal; a pontuação é visual.
+- O corte transaxial inicial é o do meio do campo (a aquisição cardíaca é centrada no coração); procurar o corte mais quente erra por causa do fígado e das alças.
+
 ## [0.3.0] - 2026-10-13
 
 Nenhum número da ferramenta de esvaziamento gástrico muda: o subpacote `gastrico` não foi alterado e os testes dele passam como antes.

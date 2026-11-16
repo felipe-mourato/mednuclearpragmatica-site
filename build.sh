@@ -126,7 +126,8 @@ rm -rf "${VENV}"
 # Conferências mínimas antes de publicar
 for f in _site/index.html _site/sitemap.xml _site/404.html _site/robots.txt \
          _site/ferramentas/_pacotes/pacotes.json _site/ferramentas/esvaziamento-gastrico/index.html \
-         _site/ferramentas/dmsa/index.html; do
+         _site/ferramentas/dmsa/index.html \
+         _site/ferramentas/perfusao-miocardica/index.html; do
   if [ ! -s "$f" ]; then
     echo "ERRO: ${f} não foi gerado." >&2
     exit 1

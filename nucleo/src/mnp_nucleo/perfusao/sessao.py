@@ -1,0 +1,795 @@
+"""Sessão de processamento da cintilografia de perfusão miocárdica (SPECT), parte 1.
+
+Guarda o estado de um exame (arquivos e tipos, filtro, eixos, escores) e
+responde a comandos em JSON. A interface web só envia comandos e desenha o
+que recebe; toda a lógica fica aqui e é testada com pytest.
+
+Parte 1: controle de qualidade, reconstrução, eixos, cortes, mapa polar e
+escores visuais. Parte 2 (planejada): bordas do VE no gated, FEVE,
+volumes, dilatação isquêmica transitória, motilidade e espessamento. Os
+arquivos de gated já entram aqui: controle de qualidade (cabeçalho e
+contagens por intervalo) e, se faltar a aquisição não sincronizada, a
+soma dos intervalos serve de imagem de perfusão.
+"""
+
+from __future__ import annotations
+
+import json
+from dataclasses import dataclass
+
+import numpy as np
+
+from .. import __version__, versoes
+from ..comum import exibicao
+from ..comum.dicom import ErroDicom
+from ..comum.tabela import fmt_dec, fmt_int
+from . import controle, eixos, figuras, polar, relatorio
+from .aquisicao import ROTULOS_TIPO, TIPOS, Aquisicao, adivinhar_tipo, ler_aquisicao
+from .escores import calcular_escores, validar_escore
+from .reconstrucao import CORTE_PADRAO, ORDEM_PADRAO, Filtro, Volume, butterworth, reconstruir
+
+__all__ = ["Sessao", "ErroSessao", "ESTUDOS", "ROTULO_ESTUDO"]
+
+#: Estudos de perfusão (volumes reconstruídos): os dois principais e as pronas.
+ESTUDOS = ("estresse", "repouso", "prona_estresse", "prona_repouso")
+ROTULO_ESTUDO = {"estresse": "Estresse", "repouso": "Repouso", "prona_estresse": "Prona do estresse", "prona_repouso": "Prona do repouso"}
+PONTUADOS = ("estresse", "repouso")
+LADO_POLAR = 256
+FATOR_CORTES = 4
+
+
+class ErroSessao(ValueError):
+    """Erro de uso com mensagem para o usuário."""
+
+
+@dataclass
+class Arquivo:
+    id: str
+    nome: str
+    aq: Aquisicao
+    tipo: str
+
+
+def _ponto(p) -> tuple[float, float]:
+    try:
+        x, y = p
+        return float(x), float(y)
+    except (TypeError, ValueError):
+        raise ErroSessao("Ponto inválido.") from None
+
+
+class Sessao:
+    """Estado de um exame de perfusão miocárdica em processamento."""
+
+    def __init__(self) -> None:
+        self.limpar()
+
+    # ------------------------------------------------------------------ estado
+    def limpar(self) -> None:
+        self.arquivos: dict[str, Arquivo] = {}
+        self.filtro = Filtro(CORTE_PADRAO, ORDEM_PADRAO)
+        self.eixos: dict[str, eixos.Eixo] = {}
+        self.escores: dict[str, dict[int, int | None]] = {e: {} for e in PONTUADOS}
+        self.tetos: dict[str, float] = {}
+        self.mapa = "quente"
+        self.erros: list[str] = []
+        self._contador = 0
+        self._vol: dict = {}
+        self._polar: dict = {}
+        self._eixo_fonte: dict[str, str] = {}
+
+    def _novo_id(self, prefixo: str) -> str:
+        self._contador += 1
+        return f"{prefixo}{self._contador}"
+
+    def _arquivo(self, id_: str) -> Arquivo:
+        if id_ not in self.arquivos:
+            raise ErroSessao("Arquivo não encontrado na sessão.")
+        return self.arquivos[id_]
+
+    # --------------------------------------------------------------- arquivos
+    def adicionar_arquivo(self, nome: str, dados) -> str:
+        nome = str(nome)
+        try:
+            aq = ler_aquisicao(dados)
+        except ErroDicom as erro:
+            self.erros.append(f"{nome}: {erro}")
+            return self._resposta()
+        except Exception:  # noqa: BLE001
+            self.erros.append(f"{nome}: erro inesperado ao ler o arquivo.")
+            return self._resposta()
+        if any(a.aq.sha256 == aq.sha256 for a in self.arquivos.values()):
+            self.erros.append(f"{nome}: arquivo repetido (já carregado).")
+            return self._resposta()
+        tipo = adivinhar_tipo(aq.descricao, aq.gated, aq.posicao_paciente)
+        if any(a.tipo == tipo for a in self.arquivos.values()):
+            tipo = "ignorar"
+        id_ = self._novo_id("a")
+        self.arquivos[id_] = Arquivo(id_, nome, aq, tipo)
+        self._apos_mudanca()
+        return self._resposta()
+
+    def definir_tipo(self, arquivo: str, tipo: str) -> None:
+        if tipo not in TIPOS:
+            raise ErroSessao("Tipo de aquisição desconhecido.")
+        a = self._arquivo(arquivo)
+        if tipo.startswith("gated") and not a.aq.gated:
+            raise ErroSessao("Este arquivo não é sincronizado (gated): escolha estresse, repouso ou prona.")
+        a.tipo = tipo
+        self._apos_mudanca()
+
+    def remover_arquivo(self, arquivo: str) -> None:
+        self._arquivo(arquivo)
+        del self.arquivos[arquivo]
+        self._apos_mudanca()
+
+    def _apos_mudanca(self) -> None:
+        """Descarta volumes, mapas e eixos de estudos cuja fonte mudou."""
+        validos = {}
+        for e in ESTUDOS:
+            f = self._fonte(e)
+            if f is not None:
+                validos[e] = f[0].id
+        for e in list(self.eixos):
+            if e not in validos or self._eixo_fonte.get(e) != validos[e]:
+                del self.eixos[e]
+                self._eixo_fonte.pop(e, None)
+        for chave in list(self._vol):
+            if chave[0] not in validos or chave[1] != validos[chave[0]]:
+                del self._vol[chave]
+        self._polar.clear()
+
+    def _por_tipo(self, tipo: str) -> list[Arquivo]:
+        return [a for a in self.arquivos.values() if a.tipo == tipo]
+
+    def _fonte(self, estudo: str) -> tuple[Arquivo, bool] | None:
+        """Arquivo de onde sai o volume de um estudo e se é a soma de um gated."""
+        lista = self._por_tipo(estudo)
+        if len(lista) == 1:
+            return lista[0], lista[0].aq.gated
+        if estudo in PONTUADOS:
+            g = self._por_tipo(f"gated_{estudo}")
+            if len(g) == 1:
+                return g[0], True
+        return None
+
+    def estudos_disponiveis(self) -> list[str]:
+        return [e for e in ESTUDOS if self._fonte(e) is not None]
+
+    # ------------------------------------------------------------- validação
+    def _validacao_arquivos(self) -> str | None:
+        if not self.arquivos:
+            return "Carregue as projeções do estresse e do repouso (e os gated, se houver)."
+        repetidos = sorted({ROTULOS_TIPO[a.tipo] for a in self.arquivos.values() if a.tipo != "ignorar" and len(self._por_tipo(a.tipo)) > 1})
+        if repetidos:
+            return "Tipo repetido em mais de um arquivo: " + ", ".join(repetidos) + ". Deixe um arquivo por tipo."
+        if not any(self._fonte(e) for e in PONTUADOS):
+            return "Falta a aquisição de estresse ou de repouso: marque o tipo de cada arquivo."
+        return None
+
+    def _validacao_eixos(self) -> str | None:
+        if self._validacao_arquivos():
+            return self._validacao_arquivos()
+        faltam = [ROTULO_ESTUDO[e].lower() for e in self.estudos_disponiveis() if e not in self.eixos]
+        if faltam:
+            return "Trace o eixo do VE em: " + ", ".join(faltam) + "."
+        return None
+
+    def _avisos(self) -> list[str]:
+        avisos = []
+        for a in self.arquivos.values():
+            for x in a.aq.avisos:
+                avisos.append(f"{a.nome}: {x}")
+        for e in PONTUADOS:
+            f = self._fonte(e)
+            if f and f[1] and f[0].tipo.startswith("gated"):
+                avisos.append(f"{ROTULO_ESTUDO[e]}: sem a aquisição não sincronizada; a perfusão usa a soma dos intervalos do gated.")
+        if not self._fonte("repouso") and self._fonte("estresse"):
+            avisos.append("Só estresse: sem repouso, não há SRS nem SDS.")
+        if not self._fonte("estresse") and self._fonte("repouso"):
+            avisos.append("Só repouso: sem estresse, não há SSS nem SDS.")
+        dims = {(a.aq.pixel_mm, a.aq.colunas) for e in self.estudos_disponiveis() for a in [self._fonte(e)[0]]}
+        if len(dims) > 1:
+            avisos.append("As aquisições têm tamanho de pixel ou matriz diferentes: confira o pareamento dos cortes.")
+        return avisos
+
+    # ------------------------------------------------------------ reconstrução
+    def definir_filtro(self, corte, ordem) -> None:
+        try:
+            self.filtro = Filtro(float(corte), int(ordem)).validar()
+        except ValueError as erro:
+            raise ErroSessao(str(erro)) from None
+        self._vol.clear()
+        self._polar.clear()
+
+    def _vol_chave(self, estudo: str):
+        f = self._fonte(estudo)
+        return None if f is None else (estudo, f[0].id)
+
+    def volume(self, estudo: str) -> Volume:
+        if estudo not in ESTUDOS:
+            raise ErroSessao("Estudo desconhecido.")
+        chave = self._vol_chave(estudo)
+        if chave is None:
+            raise ErroSessao(f"Sem aquisição de {ROTULO_ESTUDO[estudo].lower()}.")
+        if chave not in self._vol:
+            self._vol[chave] = reconstruir(self._fonte(estudo)[0].aq, self.filtro)
+        return self._vol[chave]
+
+    def corte_sugerido(self, estudo: str) -> int:
+        """Corte transaxial inicial: o do meio do campo, porque a aquisição cardíaca é centrada no coração.
+
+        Buscar o corte mais quente erra com frequência (estômago, alças e
+        fígado captam muito MIBI); o usuário escolhe o corte no controle.
+        """
+        return self.volume(estudo).n_cortes // 2
+
+    def _janela_volume(self, estudo: str) -> dict:
+        """Janela inicial do transaxial e do plano vertical (só exibição).
+
+        Fígado e alças costumam captar muito mais que o coração; uma janela
+        pelo volume inteiro deixa o VE escuro. O teto é o percentil 99,8 da
+        região onde o coração costuma estar: metade direita da imagem (lado
+        esquerdo do paciente), da frente até 65% da altura, nos cortes entre
+        25% e 75% do campo. O usuário ajusta com o botão do meio.
+        """
+        v = np.clip(self.volume(estudo).dados, 0, None)
+        k, n = v.shape[0], v.shape[1]
+        regiao = v[k // 4 : max(k // 4 + 1, 3 * k // 4), : max(1, int(0.65 * n)), n // 2 :]
+        teto = float(np.percentile(regiao, 99.8)) or float(v.max()) or 1.0
+        return {"nivel": teto / 2.0, "largura": teto, "faixa": float(v.max()) or 1.0}
+
+    # ------------------------------------------------------------------ eixos
+    def definir_eixo(self, estudo, corte, base_1, apice_1, base_2=None, apice_2=None) -> None:
+        """Eixo pelas duas etapas. Sem a segunda, usa a linha horizontal equivalente no plano vertical."""
+        vol = self.volume(estudo)
+        k = int(corte)
+        if not 0 <= k < vol.n_cortes:
+            raise ErroSessao("Corte transaxial fora do volume.")
+        b1, a1 = _ponto(base_1), _ponto(apice_1)
+        if np.hypot(a1[0] - b1[0], a1[1] - b1[1]) < 2:
+            raise ErroSessao("Linha curta demais: marque a base e o ápice do VE.")
+        m = (vol.n - 1) / 2.0
+        if base_2 is None or apice_2 is None:
+            meia = np.hypot(a1[0] - b1[0], a1[1] - b1[1]) / 2.0
+            b2, a2 = (m - meia, m), (m + meia, m)
+        else:
+            b2, a2 = _ponto(base_2), _ponto(apice_2)
+        try:
+            self.eixos[estudo] = eixos.eixo_de_marcacoes(vol, k, b1, a1, b2, a2)
+        except ValueError as erro:
+            raise ErroSessao(str(erro)) from None
+        self._eixo_fonte[estudo] = self._fonte(estudo)[0].id
+        self._polar.pop(estudo, None)
+
+    def copiar_eixo(self, de, para) -> None:
+        if de not in self.eixos:
+            raise ErroSessao(f"O {ROTULO_ESTUDO.get(de, de).lower()} ainda não tem eixo.")
+        vol = self.volume(para)
+        src = self.eixos[de]
+        self.eixos[para] = eixos.marcacoes_de_eixo(vol, src.base, src.apice)
+        self._eixo_fonte[para] = self._fonte(para)[0].id
+        self._polar.pop(para, None)
+
+    def apagar_eixo(self, estudo) -> None:
+        self.eixos.pop(estudo, None)
+        self._polar.pop(estudo, None)
+
+    def _eixo(self, estudo) -> eixos.Eixo:
+        if estudo not in self.eixos:
+            raise ErroSessao(f"Trace o eixo do VE no {ROTULO_ESTUDO.get(estudo, estudo).lower()}.")
+        return self.eixos[estudo]
+
+    # ------------------------------------------------------------------ polar
+    def mapa_polar(self, estudo) -> polar.MapaPolar:
+        if estudo not in self._polar:
+            try:
+                self._polar[estudo] = polar.amostrar_polar(self.volume(estudo), self._eixo(estudo))
+            except ValueError as erro:
+                raise ErroSessao(str(erro)) from None
+        return self._polar[estudo]
+
+    def _teto(self, estudo) -> float:
+        return self.mapa_polar(estudo).maximo * self.tetos.get(estudo, 100.0) / 100.0
+
+    def definir_teto(self, estudo, teto) -> None:
+        if estudo not in ESTUDOS:
+            raise ErroSessao("Estudo desconhecido.")
+        t = float(teto)
+        if not 20.0 <= t <= 200.0:
+            raise ErroSessao("O teto da escala deve ficar entre 20% e 200% do máximo do VE.")
+        self.tetos[estudo] = t
+
+    def definir_mapa(self, mapa) -> None:
+        if mapa not in figuras.MAPAS:
+            raise ErroSessao("Escala de cor desconhecida.")
+        self.mapa = mapa
+
+    # ---------------------------------------------------------------- escores
+    def pontuar(self, estudo, segmento, escore) -> None:
+        if estudo not in PONTUADOS:
+            raise ErroSessao("Só o estresse e o repouso são pontuados.")
+        s = int(segmento)
+        if s not in polar.SEGMENTOS:
+            raise ErroSessao("Segmento deve ser de 1 a 17.")
+        try:
+            self.escores[estudo][s] = validar_escore(escore)
+        except ValueError as erro:
+            raise ErroSessao(str(erro)) from None
+
+    def pontuar_todos(self, estudo, escore) -> None:
+        for s in polar.SEGMENTOS:
+            self.pontuar(estudo, s, escore)
+
+    def copiar_escores(self, de, para) -> None:
+        if de not in PONTUADOS or para not in PONTUADOS:
+            raise ErroSessao("Só o estresse e o repouso são pontuados.")
+        self.escores[para] = dict(self.escores[de])
+
+    def calcular_escores(self):
+        return calcular_escores(self.escores["estresse"], self.escores["repouso"])
+
+    # ----------------------------------------------------------------- imagens
+    def _cinza(self, valores, pedido, padrao) -> bytes:
+        nivel = float(pedido["nivel"]) if pedido.get("nivel") is not None else padrao["nivel"]
+        largura = float(pedido["largura"]) if pedido.get("largura") is not None else padrao["largura"]
+        return exibicao.renderizar_rgba(valores, nivel, largura, bool(pedido.get("invertido")))
+
+    @staticmethod
+    def _janela(valores) -> dict:
+        """Janela inicial das projeções (só exibição).
+
+        Teto no percentil 99,5 dos 60% superiores das linhas, onde fica o
+        coração numa aquisição centrada nele; fígado e alças, abaixo, não
+        escurecem a imagem. O usuário ajusta com o botão do meio.
+        """
+        v = np.asarray(valores, dtype=np.float64)
+        if not v.size:
+            return {"nivel": 0.5, "largura": 1.0, "faixa": 1.0}
+        mx = float(v.max())
+        parte = v[..., : max(1, int(0.6 * v.shape[-2])), :] if v.ndim >= 2 else v
+        teto = float(np.percentile(parte, 99.5)) or mx or 1.0
+        return {"nivel": teto / 2.0, "largura": max(teto, 1.0), "faixa": max(mx, 1.0)}
+
+    def imagem(self, pedido) -> bytes:
+        """Bytes RGBA de uma imagem. ``pedido['fonte']``:
+
+        * ``projecao`` (arquivo, indice, intervalo opcional): projeção de um ângulo;
+        * ``sinograma`` (arquivo, linha) e ``linograma`` (arquivo);
+        * ``transaxial`` (estudo, corte) e ``plano_vertical`` (estudo; ou corte, base_1, apice_1);
+        * ``faixa`` (estudo, tipo SA | VLA | HLA) e ``previa`` (estudo: SA, VLA e HLA do meio);
+        * ``polar`` (estudo; com_escores).
+        As imagens em cinza aceitam nivel, largura e invertido.
+        """
+        if isinstance(pedido, str):
+            pedido = json.loads(pedido)
+        fonte = pedido.get("fonte")
+        if fonte in ("projecao", "sinograma", "linograma"):
+            aq = self._arquivo(pedido["arquivo"]).aq
+            soma = aq.somadas()
+            if fonte == "projecao":
+                i = int(np.clip(int(pedido.get("indice", 0)), 0, aq.n_angulos - 1))
+                g = pedido.get("intervalo")
+                valores = soma[i] if g is None else aq.projecoes[int(np.clip(int(g), 0, aq.n_intervalos - 1)), i]
+                return self._cinza(valores, pedido, self._janela(soma if g is None else aq.projecoes))
+            valores = controle.sinograma(aq, int(pedido.get("linha", 0))) if fonte == "sinograma" else controle.linograma(aq)
+            return self._cinza(valores, pedido, self._janela(valores))
+        estudo = pedido.get("estudo")
+        if fonte == "transaxial":
+            vol = self.volume(estudo)
+            k = int(np.clip(int(pedido.get("corte", vol.n_cortes // 2)), 0, vol.n_cortes - 1))
+            return self._cinza(np.clip(vol.dados[k], 0, None), pedido, self._janela_volume(estudo))
+        if fonte == "plano_vertical":
+            vol = self.volume(estudo)
+            if pedido.get("base_1") is not None:
+                k, b1, a1 = int(pedido["corte"]), _ponto(pedido["base_1"]), _ponto(pedido["apice_1"])
+            else:
+                e = self._eixo(estudo)
+                k, b1, a1 = e.corte_transaxial, e.base_1, e.apice_1
+            try:
+                valores = eixos.plano_vertical(vol, k, b1, a1)
+            except ValueError as erro:
+                raise ErroSessao(str(erro)) from None
+            return self._cinza(valores, pedido, self._janela_volume(estudo))
+        if fonte == "faixa":
+            vol, e = self.volume(estudo), self._eixo(estudo)
+            _, ims = eixos.cortes(vol, e, str(pedido.get("tipo", "SA")))
+            return figuras.faixa_rgba(ims, self._teto(estudo), pedido.get("mapa") or self.mapa, FATOR_CORTES).tobytes()
+        if fonte == "previa":
+            vol, e = self.volume(estudo), self._eixo(estudo)
+            ims = []
+            for tipo in ("SA", "VLA", "HLA"):
+                pos = eixos.posicoes(e, vol.pixel_mm, tipo)
+                meio = 0.5 * e.comprimento if tipo == "SA" else 0.0
+                d = float(pos[np.argmin(np.abs(pos - meio))])
+                ims.append(eixos.corte(vol, e, tipo, d))
+            return figuras.faixa_rgba(np.stack(ims), self._teto(estudo), self.mapa, FATOR_CORTES, espaco=6).tobytes()
+        if fonte == "polar":
+            mp = self.mapa_polar(estudo)
+            esc = self.escores.get(estudo) if pedido.get("com_escores") and estudo in PONTUADOS else None
+            return figuras.polar_rgba(mp.imagem(LADO_POLAR), mp.rho_apice, pedido.get("mapa") or self.mapa, esc).tobytes()
+        raise ErroSessao("Imagem desconhecida.")
+
+    # --------------------------------------------------------------- consultas
+    def qc(self, arquivo) -> dict:
+        a = self._arquivo(arquivo)
+        aq = a.aq
+        por_proj = controle.contagens_por_projecao(aq)
+        saida = {
+            "arquivo": a.id,
+            "angulos": [round(float(x), 2) for x in aq.angulos],
+            "contagens_projecao": [float(x) for x in por_proj],
+            "linha_sugerida": controle.linha_do_coracao(aq),
+            "pixel_mm": aq.pixel_mm,
+            "referencia_movimento": "Deslocamento de 2 pixels ou mais costuma causar artefato importante (Germano, 2001).",
+        }
+        if aq.gated:
+            saida["intervalos"] = controle.contagens_por_intervalo(aq)
+            saida["info_gated"] = aq.info_gated
+        return saida
+
+    def cortes_info(self) -> dict:
+        saida = {}
+        for est in self.estudos_disponiveis():
+            if est not in self.eixos:
+                continue
+            vol, e = self.volume(est), self.eixos[est]
+            lado = int(round(eixos.LADO_CORTE_MM / vol.pixel_mm))
+            tipos = {}
+            for tipo in ("SA", "VLA", "HLA"):
+                pos = eixos.posicoes(e, vol.pixel_mm, tipo)
+                n = len(pos)
+                tipos[tipo] = {
+                    "n": n,
+                    "lado": lado * FATOR_CORTES,
+                    "largura": n * lado * FATOR_CORTES + (n - 1) * 2,
+                    "altura": lado * FATOR_CORTES,
+                    "posicoes_mm": [round(float(x), 1) for x in pos],
+                }
+            saida[est] = {"tipos": tipos, "teto": self.tetos.get(est, 100.0), "comprimento_mm": round(e.comprimento, 1)}
+        return saida
+
+    def polar_info(self) -> dict:
+        estudos = {}
+        for est in self.estudos_disponiveis():
+            if est not in self.eixos:
+                continue
+            mp = self.mapa_polar(est)
+            estudos[est] = {
+                "valores": {str(s): round(v, 1) for s, v in mp.valores_segmentos().items()},
+                "rho_apice": mp.rho_apice,
+                "segmentos": polar.geometria_segmentos(mp.rho_apice, LADO_POLAR),
+                "escores": {str(s): self.escores[est].get(s) for s in polar.SEGMENTOS} if est in PONTUADOS else None,
+            }
+        return {"lado": LADO_POLAR, "estudos": estudos, "nomes": {str(k): v for k, v in polar.NOMES.items()},
+                "territorio": {str(k): v for k, v in polar.TERRITORIO_DO_SEGMENTO.items()}}
+
+    def _resultados(self) -> dict:
+        problema = self._validacao_eixos()
+        if problema:
+            raise ErroSessao(problema)
+        r = self.calcular_escores()
+        valores = {e: self.mapa_polar(e).valores_segmentos() for e in PONTUADOS if self._fonte(e)}
+        return {
+            "segmentos": relatorio.tabela_segmentos(r, valores),
+            "resumo": relatorio.resumo_escores(r),
+            "territorios": relatorio.tabela_territorios(r),
+            "avisos": r.avisos,
+            "tabelas_html": relatorio.tabelas_html(r, valores),
+            "tabelas_texto": relatorio.tabelas_texto(r, valores),
+            "versao": __version__,
+        }
+
+    # ----------------------------------------------------------- serializar
+    def _arquivo_json(self, a: Arquivo) -> dict:
+        aq = a.aq
+        soma = aq.somadas()
+        return {
+            "id": a.id,
+            "nome": a.nome,
+            "tipo": a.tipo,
+            "gated": aq.gated,
+            "info": {k: v for k, v in aq.info.items() if k != "sigma"},
+            "info_gated": aq.info_gated,
+            "avisos": list(aq.avisos),
+            "contagens": fmt_int(float(soma.sum())),
+            "dims": {
+                "linhas": aq.linhas,
+                "colunas": aq.colunas,
+                "angulos": aq.n_angulos,
+                "intervalos": aq.n_intervalos,
+            },
+            "janela": self._janela(soma),
+            "filtro_cm": round(self.filtro.ciclos_cm(aq.pixel_mm), 3),
+        }
+
+    def estado(self) -> dict:
+        estudos = []
+        for e in self.estudos_disponiveis():
+            a, de_gated = self._fonte(e)
+            item = {
+                "estudo": e,
+                "rotulo": ROTULO_ESTUDO[e],
+                "arquivo": a.id,
+                "de_gated": bool(de_gated and a.tipo.startswith("gated")),
+                "n_cortes": a.aq.linhas,
+                "n": a.aq.colunas,
+                "eixo": self.eixos[e].como_dict() if e in self.eixos else None,
+                "pontuado": e in PONTUADOS,
+            }
+            chave = self._vol_chave(e)
+            if chave in self._vol:
+                item["janela"] = self._janela_volume(e)
+                item["corte_sugerido"] = self.corte_sugerido(e)
+            estudos.append(item)
+        pixel = next((a.aq.pixel_mm for a in self.arquivos.values()), None)
+        r = self.calcular_escores()
+        return {
+            "versao": __version__,
+            "arquivos": [self._arquivo_json(a) for a in self.arquivos.values()],
+            "tipos": [{"valor": t, "rotulo": ROTULOS_TIPO[t]} for t in TIPOS],
+            "estudos": estudos,
+            "filtro": {
+                "corte": self.filtro.corte_nyquist,
+                "ordem": self.filtro.ordem,
+                "ciclos_pixel": round(self.filtro.ciclos_pixel(), 4),
+                "ciclos_cm": round(self.filtro.ciclos_cm(pixel), 3) if pixel else None,
+                "pixel_mm": pixel,
+                "padrao": {"corte": CORTE_PADRAO, "ordem": ORDEM_PADRAO},
+            },
+            "mapa": self.mapa,
+            "tetos": dict(self.tetos),
+            "escores": {e: {str(s): self.escores[e].get(s) for s in polar.SEGMENTOS} for e in PONTUADOS},
+            "somas": {"sss": r.sss, "srs": r.srs, "sds": r.sds},
+            "reconstruido": all(self._vol_chave(e) in self._vol for e in self.estudos_disponiveis()) and bool(self.estudos_disponiveis()),
+            "avisos": self._avisos(),
+            "erros": list(self.erros),
+            "validacao": {"arquivos": self._validacao_arquivos(), "eixos": self._validacao_eixos()},
+        }
+
+    def _resposta(self, extra: dict | None = None, com_estado: bool = True) -> str:
+        r = {"ok": True}
+        if extra:
+            r.update(extra)
+        if com_estado:
+            r["estado"] = self.estado()
+        return json.dumps(r, ensure_ascii=False)
+
+    # ---------------------------------------------------------------- laudo
+    def _arquivos_info(self) -> list[dict]:
+        saida = []
+        for a in self.arquivos.values():
+            if a.tipo == "ignorar":
+                continue
+            info = a.aq.info
+            saida.append(
+                {
+                    "rotulo": ROTULOS_TIPO[a.tipo],
+                    "nome": a.nome,
+                    "detalhe": (
+                        f"{info.get('fabricante', '')} {info.get('modelo', '')}".strip()
+                        + f" · {info['projecoes']} projeções em {fmt_dec(info['arco_graus'], 0)}°"
+                        + f" · matriz {info['matriz']} · pixel {fmt_dec(info['pixel_mm'], 2)} mm"
+                        + (f" · {fmt_dec(info['duracao_vista_s'], 1)} s por vista" if info.get("duracao_vista_s") else "")
+                        + (f" · {a.aq.n_intervalos} intervalos" if a.aq.gated else "")
+                    ),
+                    "gated": a.aq.info_gated if a.aq.gated else None,
+                    "intervalos": controle.contagens_por_intervalo(a.aq)["percentual_da_media"] if a.aq.gated else None,
+                }
+            )
+        return saida
+
+    def imagens_laudo(self) -> dict:
+        """PNGs do laudo: faixas de cortes por tipo e estudo, e mapas polares com os escores."""
+        cortes: dict = {}
+        for tipo in ("SA", "VLA", "HLA"):
+            cortes[tipo] = []
+            for e in self.estudos_disponiveis():
+                if e not in self.eixos:
+                    continue
+                _, ims = eixos.cortes(self.volume(e), self.eixos[e], tipo)
+                cortes[tipo].append((ROTULO_ESTUDO[e], figuras.png(figuras.faixa_rgba(ims, self._teto(e), self.mapa, 3))))
+        polares = []
+        for e in PONTUADOS:
+            if self._fonte(e) and e in self.eixos:
+                mp = self.mapa_polar(e)
+                polares.append((ROTULO_ESTUDO[e], figuras.png(figuras.polar_rgba(mp.imagem(LADO_POLAR), mp.rho_apice, self.mapa, self.escores[e]))))
+        return {"cortes": cortes, "polares": polares}
+
+    def laudo(self, paciente: str = "", data_exame: str = "", versoes_extra: dict | None = None, com_imagens: bool = True) -> str:
+        res = self._resultados()
+        v = versoes()
+        v.update({k: str(x) for k, x in (versoes_extra or {}).items()})
+        r = self.calcular_escores()
+        valores = {e: self.mapa_polar(e).valores_segmentos() for e in PONTUADOS if self._fonte(e)}
+        return relatorio.laudo_html(
+            r,
+            valores,
+            self.filtro,
+            v,
+            self._arquivos_info(),
+            paciente=paciente,
+            data_exame=data_exame,
+            imagens=self.imagens_laudo() if com_imagens else None,
+            avisos=self._avisos() + res["avisos"],
+            mapa=self.mapa,
+            pixel_mm=next((a.aq.pixel_mm for a in self.arquivos.values()), None),
+        )
+
+    # ------------------------------------------------------------- protocolo
+    def protocolo(self) -> dict:
+        """Tudo para refazer em lote: arquivos (nome, SHA-256, tipo), filtro, eixos, escores e exibição."""
+        return {
+            "ferramenta": "perfusao",
+            "formato": 1,
+            "versao_nucleo": __version__,
+            "arquivos": [{"nome": a.nome, "sha256": a.aq.sha256, "tipo": a.tipo} for a in self.arquivos.values()],
+            "filtro": {"corte_nyquist": self.filtro.corte_nyquist, "ordem": self.filtro.ordem},
+            "eixos": {e: x.como_dict() for e, x in self.eixos.items()},
+            "escores": {e: {str(s): v for s, v in self.escores[e].items()} for e in PONTUADOS},
+            "exibicao": {"mapa": self.mapa, "tetos": dict(self.tetos)},
+        }
+
+    @classmethod
+    def de_protocolo(cls, protocolo: dict, ler_arquivo) -> "Sessao":
+        if protocolo.get("ferramenta") != "perfusao":
+            raise ErroSessao("Protocolo de outra ferramenta.")
+        s = cls()
+        for item in protocolo["arquivos"]:
+            aq = ler_aquisicao(ler_arquivo(item["nome"], item["sha256"]))
+            if aq.sha256 != item["sha256"]:
+                raise ErroSessao(f"{item['nome']}: arquivo diferente do usado no protocolo (SHA-256 não confere).")
+            aid = s._novo_id("a")
+            s.arquivos[aid] = Arquivo(aid, item["nome"], aq, item["tipo"])
+        f = protocolo.get("filtro") or {}
+        s.filtro = Filtro(float(f.get("corte_nyquist", CORTE_PADRAO)), int(f.get("ordem", ORDEM_PADRAO))).validar()
+        for e, d in (protocolo.get("eixos") or {}).items():
+            if s._fonte(e) is None:
+                continue
+            s._eixo_fonte[e] = s._fonte(e)[0].id
+            s.eixos[e] = eixos.Eixo(
+                np.asarray(d["base_mm"], dtype=np.float64),
+                np.asarray(d["apice_mm"], dtype=np.float64),
+                int(d["corte_transaxial"]),
+                tuple(d["base_1"]),
+                tuple(d["apice_1"]),
+                tuple(d["base_2"]),
+                tuple(d["apice_2"]),
+            )
+        for e, d in (protocolo.get("escores") or {}).items():
+            if e in PONTUADOS:
+                s.escores[e] = {int(k): validar_escore(v) for k, v in d.items()}
+        ex = protocolo.get("exibicao") or {}
+        s.mapa = ex.get("mapa", s.mapa)
+        s.tetos = {k: float(v) for k, v in (ex.get("tetos") or {}).items()}
+        return s
+
+    # ---------------------------------------------------------------- comandos
+    def executar(self, comando) -> str:
+        """Executa um comando JSON e devolve a resposta em JSON (``ok``, ``erro``, ``estado``)."""
+        try:
+            c = json.loads(comando) if isinstance(comando, str) else dict(comando)
+            acao = c.get("acao")
+            if acao == "estado":
+                return self._resposta()
+            if acao == "limpar":
+                self.limpar()
+                return self._resposta()
+            if acao == "limpar_erros":
+                self.erros = []
+                return self._resposta()
+            if acao == "carregar_fantoma":
+                from ..fantomas import fantoma_perfusao
+
+                self.limpar()
+                f = fantoma_perfusao()
+                for nome, dados in f.arquivos.items():
+                    self.adicionar_arquivo(f"fantoma_{nome}", dados)
+                return self._resposta({"fantoma": {"eixo": f.eixo, "segmentos_defeito": list(f.segmentos_defeito), "descricao": f.descricao}})
+            if acao == "eixo_fantoma":
+                # Só para conferência com o fantoma: coloca o eixo verdadeiro (marcações equivalentes).
+                from ..fantomas import fantoma_perfusao
+
+                f = fantoma_perfusao(ruido=False)
+                for e in self.estudos_disponiveis():
+                    vol = self.volume(e)
+                    self.eixos[e] = eixos.marcacoes_de_eixo(vol, np.asarray(f.eixo["base"]), np.asarray(f.eixo["apice"]))
+                    self._eixo_fonte[e] = self._fonte(e)[0].id
+                    self._polar.pop(e, None)
+                return self._resposta()
+            if acao == "definir_tipo":
+                self.definir_tipo(c["arquivo"], c["tipo"])
+                return self._resposta()
+            if acao == "remover_arquivo":
+                self.remover_arquivo(c["arquivo"])
+                return self._resposta()
+            if acao == "qc":
+                return self._resposta({"qc": self.qc(c["arquivo"])}, com_estado=False)
+            if acao == "definir_filtro":
+                self.definir_filtro(c["corte"], c["ordem"])
+                return self._resposta()
+            if acao == "curva_filtro":
+                f = Filtro(float(c.get("corte", self.filtro.corte_nyquist)), int(c.get("ordem", self.filtro.ordem)))
+                try:
+                    f = f.validar()
+                except ValueError as erro:
+                    raise ErroSessao(str(erro)) from None
+                freq = np.linspace(0.0, 0.5, 101)
+                b = butterworth(freq, f.ciclos_pixel(), f.ordem)
+                rb = freq * b
+                return self._resposta(
+                    {"curva": {"f": freq.round(4).tolist(), "butterworth": b.round(4).tolist(), "rampa_butterworth": (rb / (rb.max() or 1)).round(4).tolist(),
+                               "corte_ciclos_pixel": f.ciclos_pixel()}},
+                    com_estado=False,
+                )
+            if acao == "reconstruir":
+                for e in self.estudos_disponiveis():
+                    self.volume(e)
+                return self._resposta()
+            if acao == "definir_eixo":
+                self.definir_eixo(c["estudo"], c["corte"], c["base_1"], c["apice_1"], c.get("base_2"), c.get("apice_2"))
+                return self._resposta()
+            if acao == "copiar_eixo":
+                self.copiar_eixo(c["de"], c["para"])
+                return self._resposta()
+            if acao == "apagar_eixo":
+                self.apagar_eixo(c["estudo"])
+                return self._resposta()
+            if acao == "definir_teto":
+                self.definir_teto(c["estudo"], c["teto"])
+                return self._resposta()
+            if acao == "definir_mapa":
+                self.definir_mapa(c["mapa"])
+                return self._resposta()
+            if acao == "cortes":
+                return self._resposta({"cortes": self.cortes_info()}, com_estado=False)
+            if acao == "polar":
+                return self._resposta({"polar": self.polar_info()}, com_estado=False)
+            if acao == "pontuar":
+                self.pontuar(c["estudo"], c["segmento"], c.get("escore"))
+                return self._resposta()
+            if acao == "pontuar_todos":
+                self.pontuar_todos(c["estudo"], c.get("escore"))
+                return self._resposta()
+            if acao == "copiar_escores":
+                self.copiar_escores(c["de"], c["para"])
+                return self._resposta()
+            if acao == "janela_arraste":
+                j = exibicao.ajustar_janela_por_arraste(c["nivel"], c["largura"], c["dx"], c["dy"], c["faixa"])
+                return self._resposta({"nivel": j.nivel, "largura": j.largura}, com_estado=False)
+            if acao == "resultados":
+                return self._resposta(self._resultados(), com_estado=False)
+            if acao == "laudo":
+                html = self.laudo(str(c.get("paciente") or ""), str(c.get("data_exame") or ""), c.get("versoes_extra"), c.get("com_imagens", True))
+                return self._resposta({"html": html}, com_estado=False)
+            if acao == "protocolo":
+                return self._resposta({"protocolo": self.protocolo()}, com_estado=False)
+            raise ErroSessao(f"Comando desconhecido: {acao!r}.")
+        except ErroSessao as erro:
+            return json.dumps({"ok": False, "erro": str(erro)}, ensure_ascii=False)
+        except (KeyError, TypeError, ValueError) as erro:
+            return json.dumps({"ok": False, "erro": f"Comando inválido ({erro})."}, ensure_ascii=False)
+
+    def exportar(self, pedido) -> bytes:
+        """Arquivo para download: csv, xlsx, protocolo, png_cortes (estudo, tipo) ou png_polar (estudo)."""
+        if isinstance(pedido, str):
+            pedido = json.loads(pedido)
+        formato = pedido.get("formato")
+        if formato == "protocolo":
+            return json.dumps(self.protocolo(), ensure_ascii=False, indent=2).encode("utf-8")
+        if formato == "png_polar":
+            e = pedido["estudo"]
+            mp = self.mapa_polar(e)
+            return figuras.png(figuras.polar_rgba(mp.imagem(LADO_POLAR), mp.rho_apice, self.mapa, self.escores.get(e) if e in PONTUADOS else None))
+        if formato == "png_cortes":
+            e = pedido["estudo"]
+            _, ims = eixos.cortes(self.volume(e), self._eixo(e), pedido.get("tipo", "SA"))
+            return figuras.png(figuras.faixa_rgba(ims, self._teto(e), self.mapa, FATOR_CORTES))
+        self._resultados()
+        r = self.calcular_escores()
+        valores = {e: self.mapa_polar(e).valores_segmentos() for e in PONTUADOS if self._fonte(e)}
+        if formato == "csv":
+            return relatorio.csv_resultados(r, valores)
+        if formato == "xlsx":
+            return relatorio.xlsx_resultados(r, valores, self.filtro, __version__)
+        raise ErroSessao("Formato de exportação desconhecido.")
