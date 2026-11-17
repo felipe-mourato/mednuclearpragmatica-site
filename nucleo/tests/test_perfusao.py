@@ -454,7 +454,7 @@ def test_mapa_das_diferencas(fp):
 def test_escore_automatico_banco_espanhol(fp):
     from mnp_nucleo.perfusao import normalidade as N
 
-    assert [N.escore_de_z(z) for z in (0, -2.5, -2.51, -3.5, -3.6, -4.5, -5.0, -5.5, -9)] == [0, 1, 1, 2, 2, 3, 3, 4, 4]
+    assert [N.escore_de_z(z) for z in (0, -1.99, -2.0, -2.9, -3.0, -3.5, -4.0, -4.9, -5.0, -9)] == [0, 0, 1, 1, 2, 2, 3, 3, 4, 4]
     # transcrição das figuras 2 e 3: 17 segmentos por sexo e estado, DP plausíveis
     for sexo in N.SEXOS:
         for estado in ("estresse", "repouso"):
@@ -462,8 +462,8 @@ def test_escore_automatico_banco_espanhol(fp):
             assert sorted(b) == list(range(1, 18))
             assert all(40 < m < 95 and 3 < dp < 12 for m, dp in b.values())
     assert N.BANCO_ESPANHOL["M"]["estresse"][1] == (50.0, 11.37) and N.BANCO_ESPANHOL["F"]["repouso"][14] == (83.13, 5.34)
-    r = N.escores_automaticos({s: N.BANCO_ESPANHOL["F"]["estresse"][s][0] - 3 * N.BANCO_ESPANHOL["F"]["estresse"][s][1] for s in range(1, 18)}, "F", "estresse")
-    assert all(d["escore"] == 1 and abs(d["z"] + 3) < 1e-9 for d in r.values())
+    r = N.escores_automaticos({s: N.BANCO_ESPANHOL["F"]["estresse"][s][0] - 2.5 * N.BANCO_ESPANHOL["F"]["estresse"][s][1] for s in range(1, 18)}, "F", "estresse")
+    assert all(d["escore"] == 1 and abs(d["z"] + 2.5) < 1e-9 for d in r.values())
     with pytest.raises(ValueError):
         N.escores_automaticos({}, "X", "estresse")
 

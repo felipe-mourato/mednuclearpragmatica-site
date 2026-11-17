@@ -18,9 +18,11 @@ polar normalizado a 100%.
 MÉTODO [escolhas desta ferramenta, aprovadas pelo Mourato em 17 nov 2026]:
 z = (captação do segmento − média do banco) ÷ DP do banco, com o sexo
 escolhido na tela (a ferramenta não lê dados do paciente no DICOM).
-Escore: 0 se z > −2,5; 1 se −3,5 < z ≤ −2,5; 2 se −4,5 < z ≤ −3,5; 3 se
-−5,5 < z ≤ −4,5; 4 se z ≤ −5,5. O corte inicial de −2,5 DP é o mais usado
-nos mapas de extensão; os demais, faixas de 1 DP. Não há correspondência
+Escore: 0 se z > −2; 1 se −3 < z ≤ −2; 2 se −4 < z ≤ −3; 3 se
+−5 < z ≤ −4; 4 se z ≤ −5. O escore 1 começa em −2 DP para marcar as áreas
+duvidosas (equivocal), como na escala visual; os demais são faixas de 1 DP.
+Para comparação, os mapas de extensão costumam usar −2,5 DP como corte de
+anormalidade. Não há correspondência
 padronizada entre z e a escala visual 0–4.
 
 LIMITAÇÃO, repetida na tela e no laudo: a captação desta ferramenta vem de
@@ -68,7 +70,7 @@ BANCO_ESPANHOL: dict[str, dict[str, dict[int, tuple[float, float]]]] = {
 }
 
 #: Limites superiores de z (exclusivos) para os escores 0, 1, 2 e 3; abaixo do último, 4.
-LIMIARES_Z = (-2.5, -3.5, -4.5, -5.5)
+LIMIARES_Z = (-2.0, -3.0, -4.0, -5.0)
 
 CITACAO_BANCO = (
     "Cuberas-Borrós G, Aguadé-Bruix S, Boronat-de Ferrater M, et al. Normal myocardial perfusion SPECT database "
@@ -78,7 +80,7 @@ DESCRICAO_BANCO = (
     "Banco de normalidade espanhol (Cuberas-Borrós et al., Rev Esp Cardiol 2010): 104 voluntários com probabilidade "
     "de doença coronariana < 5% (45 mulheres, 59 homens; idade média 42 e 37 anos), ⁹⁹ᵐTc-tetrofosmin, protocolo curto "
     "estresse–repouso, órbita circular de 180°, matriz 64 × 64, sem correção de atenuação, reconstrução OSEM e "
-    "quantificação no 4DM-SPECT. Escore: 0 se z > −2,5; 1 até −3,5; 2 até −4,5; 3 até −5,5; 4 abaixo de −5,5 "
+    "quantificação no 4DM-SPECT. Escore: 0 se z > −2; 1 até −3; 2 até −4; 3 até −5; 4 abaixo de −5 "
     "(z = desvios-padrão abaixo da média do banco para o sexo escolhido). Esta ferramenta usa outra reconstrução "
     "(FBP com Butterworth), outra amostragem do mapa polar e, possivelmente, outra câmera, outro radiofármaco e outra "
     "população; os segmentos basais dependem de onde a base do eixo foi traçada. O escore automático é só guia: não "
