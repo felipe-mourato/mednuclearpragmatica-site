@@ -814,6 +814,8 @@
           ${cartao('Volume sistólico', `${num(d.vs_ml, 0)} mL`)}
         </div>
         ${curvaVolume(d.volumes_ml, d.ed - 1, d.es - 1)}
+        <figure class="contornos-gated" data-contornos="${e}"><div class="faixa-rolagem"></div>
+          <figcaption>Contornos no intervalo atual: eixo curto apical, médio e basal, eixo longo vertical e horizontal. Endocárdio em azul, epicárdio em verde: devem acompanhar a parede em todos os intervalos.</figcaption></figure>
         <div class="malhas">
           <figure class="malha-fig"><canvas width="300" height="300" data-malha="${e}" data-modo="rede" aria-label="Rede do endocárdio na diástole final, ${esc(d.rotulo.toLowerCase())}"></canvas><figcaption>Diástole final: rede do endocárdio (e epicárdio, mais claro)</figcaption></figure>
           <figure class="malha-fig"><canvas width="300" height="300" data-malha="${e}" data-modo="ciclo" aria-label="Movimento do endocárdio no ciclo, ${esc(d.rotulo.toLowerCase())}"></canvas><figcaption>Movimento até a sístole final: superfície do intervalo atual dentro da rede da diástole</figcaption></figure>
@@ -832,6 +834,15 @@
         <span class="nota">Arraste a malha para girar. Ápice para baixo.</span>
       </div>`;
     area.innerHTML = html;
+    // contornos: uma imagem por intervalo, trocada junto com a malha
+    for (const e of nomes) {
+      const caixa = $(`[data-contornos="${e}"] .faixa-rolagem`);
+      for (let k = 0; k < f.estudos[e].n_intervalos; k++) {
+        const c = imagemColorida({ fonte: 'contornos', estudo: e, intervalo: k }, f.contornos.largura, f.contornos.altura, 'faixa-img');
+        c.dataset.intervalo = String(k);
+        caixa.appendChild(c);
+      }
+    }
     desenharMalhas();
     if (malha.tocando) tocarMalha();
   }
@@ -919,6 +930,11 @@
       const q = malha.quadro % d.malha.endo.length;
       desenharMalha(c, d.malha, q, c.dataset.modo);
       if (c.dataset.modo === 'ciclo') texto += `${texto ? ' · ' : ''}${d.rotulo}: intervalo ${q + 1}, ${num(d.malha.volumes_ml[q], 0)} mL`;
+    }
+    for (const fig of $$('[data-contornos]')) {
+      const d = funcaoDados.estudos[fig.dataset.contornos];
+      const q = malha.quadro % (d?.n_intervalos || 1);
+      $$('canvas', fig).forEach((c) => { c.hidden = Number(c.dataset.intervalo) !== q; });
     }
     const rot = $('[data-malha-texto]');
     if (rot) rot.textContent = texto;

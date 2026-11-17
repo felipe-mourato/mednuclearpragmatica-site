@@ -214,8 +214,8 @@
     <section class="passo" data-painel="5" aria-labelledby="t-passo-func" hidden>
       <h2 id="t-passo-func">Função ventricular (gated)</h2>
       <div class="instrucoes">
-        <p>Cada intervalo do gated é reconstruído com o mesmo filtro e cortado com o eixo do estudo (estresse ou repouso). A ferramenta acha a superfície mediomiocárdica, o plano valvar e as bordas do VE em cada intervalo, monta a curva de volume e calcula VDF, VSF e FE. A TID compara a cavidade do estresse e do repouso nas imagens não sincronizadas.</p>
-        <p class="nota">Implementação própria no estilo do QGS (Germano 1995 e 1997), com espessura de 10 mm assumida na diástole final: os números não são intercambiáveis com os de programas comerciais. Confira a malha: o endocárdio deve acompanhar a parede em todos os intervalos.</p>
+        <p>Método do QGS (Germano et al., J Nucl Med 1995): segmentação do VE, superfície mediomiocárdica e elipsoide, detector de bordas, plano valvar e endocárdio e epicárdio a 65% do desvio-padrão da gaussiana de cada perfil, com volume miocárdico constante. Cada intervalo do gated é reconstruído com o mesmo filtro; o eixo traçado no passo 4 só orienta a busca. Saem a curva de volume, VDF, VSF e FE; a TID compara a cavidade do estresse e do repouso nas imagens não sincronizadas.</p>
+        <p class="nota">Implementado a partir do artigo, com as escolhas não publicadas declaradas no laudo: os números não são intercambiáveis com os do QGS comercial (a reconstrução e o filtro também mudam os volumes). Confira os contornos: o endocárdio e o epicárdio devem acompanhar a parede em todos os intervalos.</p>
       </div>
       <div class="antropometria">
         <label class="campo">Peso (kg) <input type="number" min="2" max="400" step="0.1" data-peso inputmode="decimal"></label>

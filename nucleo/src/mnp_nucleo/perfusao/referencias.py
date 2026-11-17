@@ -20,8 +20,9 @@ Cada número usado foi conferido no texto (PDFs enviados pelo Mourato em
 * Reorientação manual em duas etapas: Germano 2001, p. 1504 e figura 10.
 * Movimento ≥ 2 pixels: Germano 2001, p. 1506.
 * Janela R-R em torno de 20%: SBC 2020, p. 338.
-* Gated (17 nov 2026, metadados pelo PubMed): Germano 1995 (FE automática,
-  superfícies endo e epicárdica em todos os intervalos); Germano 1997
+* Gated (17 nov 2026, metadados pelo PubMed; texto completo de Germano 1995
+  enviado pelo Mourato): Germano 1995 (método inteiro do QGS: segmentação,
+  elipsoide, detector, plano valvar, 65% do σ, massa constante); Germano 1997
   (motilidade pelo método da linha central modificado; espessamento por
   geometria e por volume parcial); Abidov 2004 (TID automática); Mosteller
   1987 (superfície corporal). Manual de referência do QGS/QPS (Cedars-Sinai,
@@ -91,7 +92,7 @@ KAK_1988 = Fonte(
 GERMANO_1995 = Fonte(
     "Germano et al., 1995",
     "Germano G, Kiat H, Kavanagh PB, et al. Automatic quantification of ejection fraction from gated myocardial "
-    "perfusion SPECT. J Nucl Med. 1995;36(11):2138-47 (método de referência; implementação própria no mesmo estilo).",
+    "perfusion SPECT. J Nucl Med. 1995;36(11):2138-47 (método do gated, implementado a partir do texto completo).",
     None,
 )
 GERMANO_1997 = Fonte(

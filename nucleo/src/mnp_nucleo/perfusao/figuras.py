@@ -158,3 +158,46 @@ def polar_rgba(mapa_img: np.ndarray, rho_apice: float, mapa: str = "quente", esc
 
 def png(rgba: np.ndarray) -> bytes:
     return codificar_png(rgba)
+
+
+#: Cortes de conferência dos contornos do gated: campo de 140 mm, 1 mm por pixel.
+CAMPO_CONTORNO_MM = 140.0
+LADO_CONTORNO = 141
+COR_ENDO = (56, 189, 248)
+COR_EPI = (163, 230, 53)
+
+
+def _linha(rgb: np.ndarray, p0, p1, cor, espessura: int = 1) -> None:
+    n = int(max(abs(p1[0] - p0[0]), abs(p1[1] - p0[1]))) * 2 + 2
+    ii = np.rint(np.linspace(p0[0], p1[0], n)).astype(int)
+    jj = np.rint(np.linspace(p0[1], p1[1], n)).astype(int)
+    for di in range(-espessura + 1, espessura):
+        for dj in range(-espessura + 1, espessura):
+            a, b = ii + di, jj + dj
+            ok = (a >= 0) & (a < rgb.shape[0]) & (b >= 0) & (b < rgb.shape[1])
+            rgb[a[ok], b[ok]] = cor
+
+
+def contornos_rgba(vol, paineis, malhas, teto: float, mapa: str = "quente", espaco: int = 4) -> np.ndarray:
+    """Cortes lado a lado (centro, direção →, direção ↑) com as interseções das malhas (endo, epi) desenhadas por cima."""
+    from .gated import intersecao_malha
+
+    L = CAMPO_CONTORNO_MM / 2.0
+    n = LADO_CONTORNO
+    o = np.linspace(-L, L, n)
+    U, V = np.meshgrid(o, o[::-1], indexing="xy")  # linha 0 = em cima
+    partes = []
+    for k, (_, centro, ex, ey) in enumerate(paineis):
+        if k:
+            partes.append(np.full((n, espaco, 3), 255, dtype=np.uint8))
+        pts = centro + U[..., None] * ex + V[..., None] * ey
+        rgb = colorir(vol.amostrar(pts), teto, mapa).copy()
+        normal = np.cross(ex, ey)
+        normal /= np.linalg.norm(normal)
+        for malha, cor in zip(malhas, (COR_ENDO, COR_EPI)):
+            for a, b in intersecao_malha(malha, centro, normal):
+                pa = ((L - (a - centro) @ ey) / (2 * L) * (n - 1), ((a - centro) @ ex + L) / (2 * L) * (n - 1))
+                pb = ((L - (b - centro) @ ey) / (2 * L) * (n - 1), ((b - centro) @ ex + L) / (2 * L) * (n - 1))
+                _linha(rgb, pa, pb, cor, 2)
+        partes.append(rgb)
+    return rgba_bytes(np.concatenate(partes, axis=1))

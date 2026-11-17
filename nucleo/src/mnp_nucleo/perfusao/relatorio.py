@@ -51,16 +51,18 @@ NOTAS_METODO = (
 
 NOTAS_FUNCAO = (
     "FE = (VDF − VSF) ÷ VDF × 100; VDF e VSF = maior e menor volume da curva de volume do gated (diástole e sístole finais).",
-    "Bordas do VE: superfície mediomiocárdica pelo máximo de contagem, plano valvar ajustado em cada intervalo, espessura "
-    "de 10 mm assumida na diástole final e, nos outros intervalos, espessura pelo aumento de contagem (volume parcial) com "
-    "massa miocárdica constante (implementação própria no estilo de Germano 1995 e 1997).",
+    "Bordas do VE pelo método do QGS (Germano et al., J Nucl Med 1995;36:2138-47): segmentação por limiar de 50% e clusters; "
+    "superfície de contagem máxima a partir do centro de massa e elipsoide iterado; perfis normais ao elipsoide com o detector "
+    "de segunda derivada da gaussiana (σ = 10 mm); plano valvar com limiar de 25% na diástole; gaussiana assimétrica em perfis "
+    "de ±20 mm, com endocárdio e epicárdio a 65% do desvio-padrão; volume miocárdico constante nos outros intervalos. "
+    "Implementação própria a partir do artigo, com as escolhas declaradas no código; não é o programa comercial.",
     "Motilidade: deslocamento do endocárdio da diástole para a sístole final (mm; mapa de 0 a 10 mm). Espessamento: aumento "
-    "relativo da espessura da diástole para a sístole final (%; mapa de 0 a 100%). Sem banco de normalidade: o septo costuma "
-    "mover menos que a parede lateral e o ápice espessa mais que a base, mesmo em pessoas normais (manual do QGS).",
+    "relativo da espessura geométrica da diástole para a sístole final (%; mapa de 0 a 100%). Sem banco de normalidade: o septo "
+    "costuma mover menos que a parede lateral e o ápice espessa mais que a base, mesmo em pessoas normais (manual do QGS).",
     "Escores visuais: motilidade 0 normal, 1 hipocinesia discreta, 2 moderada, 3 acentuada, 4 acinesia, 5 discinesia; "
-    "espessamento 0 normal, 1 discretamente reduzido, 2 moderada a acentuadamente reduzido, 3 ausente (SBC 2020; manual do QGS). "
+    "espessamento 0 normal, 1 redução discreta, 2 redução moderada ou acentuada, 3 ausência de espessamento (SBC 2020, Tabela 19). "
     "SMS e STS = somas dos 17 segmentos; % = soma ÷ 85 (motilidade) ou ÷ 51 (espessamento).",
-    "TID = volume da cavidade no estresse ÷ no repouso, nas imagens não sincronizadas, pelo mesmo método de bordas (Abidov 2004). "
+    "TID = volume endocárdico no estresse ÷ no repouso, nas imagens não sincronizadas, pelo mesmo método de bordas (Abidov 2004). "
     "Mostrada sem ponto de corte: o limiar depende do protocolo, do radiofármaco e do programa.",
     "Volumes indexados pela superfície corporal de Mosteller (√(altura × peso ÷ 3600)), com peso e altura digitados.",
 )
@@ -383,7 +385,11 @@ def _funcao_html(fun: dict | None, imagens: dict | None) -> str:
                          for rot, png in imagens.get("malhas", []))
         pol = "".join(f'<figure class="laudo-polar">{_img(png, f"Mapa polar de {rot}", "laudo-polar-img", 200)}<figcaption>{escape(rot)}</figcaption></figure>'
                       for rot, png in imagens.get("polares", []))
-        figs = (f'<div class="laudo-polares">{malhas}</div>' if malhas else "") + (f'<div class="laudo-polares">{pol}</div>' if pol else "")
+        cont = "".join(f'<figure class="laudo-contorno">{_img(png, f"Contornos, {rot}", "laudo-contorno-img")}<figcaption>{escape(rot)}</figcaption></figure>'
+                       for rot, png in imagens.get("contornos", []))
+        figs = ((f'<div class="laudo-contornos">{cont}<p class="laudo-legenda">Eixo curto apical, médio e basal, eixo longo vertical e '
+                 "horizontal; endocárdio em azul e epicárdio em verde.</p></div>") if cont else "") \
+            + (f'<div class="laudo-polares">{malhas}</div>' if malhas else "") + (f'<div class="laudo-polares">{pol}</div>' if pol else "")
     sc = f'<p class="laudo-nota">Superfície corporal: {fmt_dec(fun["superficie_corporal"], 2)} m² (Mosteller), com peso e altura digitados.</p>' if fun.get("superficie_corporal") else ""
     return (f'<section><h3>Função ventricular (gated)</h3>{funcao_tabelas_html(fun)}{sc}'
             f'<div class="laudo-polares">{curvas}</div>{figs}'
@@ -484,7 +490,7 @@ def laudo_html(
 <p><strong>Reconstrução:</strong> retroprojeção filtrada. {escape(descrever_filtro(filtro, pixel_mm))} As duas convenções do corte (fração de Nyquist e ciclos/pixel) aparecem lado a lado porque cada fabricante usa uma (Germano, 2001). O padrão inicial da ferramenta (ordem 11, corte 0,45 Nyquist) é o melhor resultado num fantoma de VE com ⁹⁹ᵐTc citado por Lyra e Ploussi (2011).</p>
 <p><strong>Reorientação:</strong> eixo longo do VE traçado à mão num corte transaxial e depois no plano vertical que contém essa linha (Germano, 2001). Cortes exibidos no padrão de Cerqueira et al. (2002): eixo curto do ápice para a base, com anterior em cima e septo à esquerda; eixo longo vertical com o ápice à direita; eixo longo horizontal com o ápice em cima.</p>
 <p><strong>Mapa polar e segmentos:</strong> 17 segmentos e territórios coronarianos de Cerqueira et al. (2002), como na ASNC (2017) e na SBC (2020). <strong>Desvio declarado:</strong> a amostragem do miocárdio desta versão é própria (perfil de contagem máxima ao longo de raios a partir do eixo, com um centro apical a 30% do comprimento do eixo, limitado entre 10 e 40 mm), e não a do QPS (Germano et al., 2000), que depende da detecção automática das bordas do VE.</p>
-{'<p><strong>Gated:</strong> cada intervalo reconstruído com o mesmo filtro e reorientado com o eixo do estudo. Bordas, volumes, motilidade e espessamento: implementação própria no estilo do QGS (Germano et al., 1995 e 1997), com espessura de 10 mm assumida na diástole final (ver as fórmulas abaixo). Não é o QGS e os números não são intercambiáveis com os de programas comerciais.</p>' if funcao else ''}
+{'<p><strong>Gated:</strong> cada intervalo reconstruído com o mesmo filtro. Bordas, volumes, motilidade e espessamento pelo método publicado do QGS (Germano et al., 1995; motilidade e espessamento como em Germano et al., 1997), implementado a partir do artigo (ver as fórmulas abaixo). Não é o programa comercial: a reconstrução, o filtro e os detalhes não publicados mudam os números, que não são intercambiáveis com os do QGS.</p>' if funcao else ''}
 </section>
 <section><h3>Fórmulas e critérios</h3><ul>{notas}</ul></section>
 <section><h3>Arquivos</h3><ul class="laudo-arquivos">{arquivos}</ul></section>

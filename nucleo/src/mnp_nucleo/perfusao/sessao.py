@@ -503,8 +503,32 @@ class Sessao:
             "superficie_corporal": round(sc, 2) if sc else None,
             "antropometria": dict(self.antropometria),
             "lado": LADO_POLAR,
-            "metodo": {"espessura_diastole_mm": gated.ESPESSURA_DIASTOLE_MM, "limiar_valva": gated.LIMIAR_VALVA},
+            "metodo": {"fracao_sd": gated.FRACAO_SD, "limiar_valva": gated.LIMIAR_VALVA},
+            "contornos": {"largura": 5 * figuras.LADO_CONTORNO + 4 * 4, "altura": figuras.LADO_CONTORNO,
+                          "paineis": ["Eixo curto apical", "Eixo curto médio", "Eixo curto basal", "Eixo longo vertical", "Eixo longo horizontal"]},
         }
+
+    def _teto_contornos(self, estudo: str) -> float:
+        """Teto da escala dos contornos: percentil 99,5 do eixo curto médio, o maior entre os intervalos (só exibição)."""
+        chave = (estudo, "teto_contornos")
+        if chave not in self._cortes_gated:
+            r = self.funcao(estudo)
+            o = np.linspace(-figuras.CAMPO_CONTORNO_MM / 2, figuras.CAMPO_CONTORNO_MM / 2, 71)
+            U, V = np.meshgrid(o, o)
+            tetos = []
+            for t, v in enumerate(self.volumes_gated(estudo)):
+                _, c, ex, ey = gated.paineis_contorno(r, t)[1]
+                tetos.append(float(np.percentile(v.amostrar(c + U[..., None] * ex + V[..., None] * ey), 99.5)))
+            self._cortes_gated[chave] = max(tetos) or 1.0
+        return self._cortes_gated[chave]
+
+    def contornos(self, estudo: str, intervalo: int, mapa: str | None = None) -> np.ndarray:
+        """RGBA dos 5 cortes de conferência de um intervalo com o endocárdio (azul) e o epicárdio (verde)."""
+        r = self.funcao(estudo)
+        vols = self.volumes_gated(estudo)
+        t = int(np.clip(int(intervalo), 0, len(vols) - 1))
+        teto = self._teto_contornos(estudo) * self.tetos.get(estudo, 100.0) / 100.0
+        return figuras.contornos_rgba(vols[t], gated.paineis_contorno(r, t), r.malhas_mm[t], teto, mapa or self.mapa)
 
     def _cortes_gated_teto(self, estudo: str, tipo: str):
         chave = (estudo, tipo)
@@ -546,7 +570,8 @@ class Sessao:
         * ``faixa`` (estudo, tipo SA | VLA | HLA) e ``previa`` (estudo: SA, VLA e HLA do meio);
         * ``polar`` (estudo; com_escores);
         * ``faixa_gated`` (estudo, tipo, intervalo): cortes de um intervalo do gated;
-        * ``polar_funcao`` (estudo, tipo motilidade | espessamento; com_escores).
+        * ``polar_funcao`` (estudo, tipo motilidade | espessamento; com_escores);
+        * ``contornos`` (estudo, intervalo): eixo curto apical, médio e basal e eixos longos com endo e epicárdio.
         As imagens em cinza aceitam nivel, largura e invertido.
         """
         if isinstance(pedido, str):
@@ -598,6 +623,8 @@ class Sessao:
             k = int(np.clip(int(pedido.get("intervalo", 0)), 0, pilhas.shape[0] - 1))
             fator = self.tetos.get(estudo, 100.0) / 100.0
             return figuras.faixa_rgba(pilhas[k], teto * fator, pedido.get("mapa") or self.mapa, FATOR_CORTES).tobytes()
+        if fonte == "contornos":
+            return self.contornos(estudo, pedido.get("intervalo", 0), pedido.get("mapa")).tobytes()
         if fonte == "polar_funcao":
             tipo = pedido.get("tipo")
             if tipo not in TIPOS_FUNCAO:
@@ -816,7 +843,14 @@ class Sessao:
                     imgs.append((rot, base64.b64decode(url[len(prefixo):], validate=True)))
                 except ValueError:
                     continue
-        return {"polares": polares, "malhas": imgs}
+        contornos = []
+        for e in self.gated_disponiveis():
+            if e not in self.eixos:
+                continue
+            r = self.funcao(e)
+            for t, nome in ((r.ed, "diástole final"), (r.es, "sístole final")):
+                contornos.append((f"{ROTULO_ESTUDO[e]} · {nome} (intervalo {t + 1})", figuras.png(self.contornos(e, t))))
+        return {"polares": polares, "malhas": imgs, "contornos": contornos}
 
     def imagens_laudo(self) -> dict:
         """PNGs do laudo: faixas de cortes por tipo e estudo, e mapas polares com os escores."""

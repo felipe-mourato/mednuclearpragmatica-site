@@ -230,7 +230,7 @@ cd nucleo
 .venv/bin/python -m pytest
 ```
 
-Para conferir uma ferramenta sem exame próprio, use o botão "Carregar o fantoma de exemplo": no esvaziamento gástrico a retenção esperada é 100, 60, 30 e 8%; no DMSA, função relativa posterior do rim direito de 44,0%, pela média geométrica de 46,8% e corrigida pelo tamanho de 50,0%; na perfusão miocárdica, o botão "Usar o eixo verdadeiro do fantoma" põe o eixo certo, e o mapa polar do estresse mostra o defeito lateral nos segmentos 5, 6, 11 e 12 (o repouso é normal); no passo da função, a FE do repouso fica perto de 61% (verdadeira) e a TID acima de 1 (o estresse do fantoma é dilatado).
+Para conferir uma ferramenta sem exame próprio, use o botão "Carregar o fantoma de exemplo": no esvaziamento gástrico a retenção esperada é 100, 60, 30 e 8%; no DMSA, função relativa posterior do rim direito de 44,0%, pela média geométrica de 46,8% e corrigida pelo tamanho de 50,0%; na perfusão miocárdica, o botão "Usar o eixo verdadeiro do fantoma" põe o eixo certo, e o mapa polar do estresse mostra o defeito lateral nos segmentos 5, 6, 11 e 12 (o repouso é normal); no passo da função, a FE fica a poucos pontos da verdadeira (61% no repouso), os volumes saem abaixo dos verdadeiros (efeito da resolução no método do QGS) e a TID fica acima de 1 (o estresse do fantoma é dilatado).
 
 Ferramentas publicadas (escondidas, só para quem tem o link): `/ferramentas/esvaziamento-gastrico/`, `/ferramentas/dmsa/` e `/ferramentas/perfusao-miocardica/`.
 

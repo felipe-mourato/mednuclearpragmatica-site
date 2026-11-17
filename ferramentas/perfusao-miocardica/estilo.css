@@ -465,3 +465,8 @@ table.resultados tbody tr:last-child > * { border-bottom: 0; }
 .laudo-curva-fig figcaption, .laudo-malha figcaption { font-size: .8125rem; color: var(--ink-muted); max-width: 260px; }
 .laudo-curva text { fill: #333; font-family: var(--font-mono); }
 .laudo-tid { margin: 8px 0; }
+.laudo-contornos { margin: 10px 0; }
+.laudo-contorno { margin: 0 0 8px; }
+.laudo-contorno-img { max-width: 100%; height: auto; image-rendering: auto; }
+.contornos-gated canvas { max-width: 100%; height: auto; display: block; border-radius: var(--radius-sm); }
+.contornos-gated figcaption { font-size: .8125rem; color: var(--ink-muted); margin-top: 4px; }
