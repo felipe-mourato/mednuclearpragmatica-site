@@ -470,3 +470,6 @@ table.resultados tbody tr:last-child > * { border-bottom: 0; }
 .laudo-contorno-img { max-width: 100%; height: auto; image-rendering: auto; }
 .contornos-gated canvas { max-width: 100%; height: auto; display: block; border-radius: var(--radius-sm); }
 .contornos-gated figcaption { font-size: .8125rem; color: var(--ink-muted); margin-top: 4px; }
+.polar-visor g.seg-info path { fill: transparent; stroke: rgba(255, 255, 255, .55); stroke-width: 1; }
+.polar-visor g.seg-info text { fill: #fff; font-family: var(--font-mono); font-weight: 600; font-size: 15px; paint-order: stroke; stroke: #081019; stroke-width: 3px; pointer-events: none; }
+.polar-diferenca .nota { font-size: .8125rem; margin: 4px 0 0; }

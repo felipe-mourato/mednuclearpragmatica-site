@@ -425,3 +425,27 @@ def test_estresse_e_repouso_com_o_mesmo_numero_de_cortes(fp):
     c = cmd(s, acao="cortes")["cortes"]
     assert c["estresse"]["tipos"]["SA"]["n"] == c["repouso"]["tipos"]["SA"]["n"]
     assert s.comprimento_par("repouso") == pytest.approx(s.eixos["estresse"].comprimento)
+
+
+def test_mapa_das_diferencas(fp):
+    s = Sessao()
+    for n in ("estresse.dcm", "repouso.dcm"):
+        s.adicionar_arquivo(n, fp.arquivos[n])
+    assert s.mapa_diferenca() is None
+    cmd(s, acao="eixo_fantoma")
+    dif = s.mapa_diferenca().valores_segmentos()
+    est = s.mapa_polar("estresse").valores_segmentos()
+    rep = s.mapa_polar("repouso").valores_segmentos()
+    for seg in range(1, 18):
+        assert dif[seg] == pytest.approx(rep[seg] - est[seg], abs=1e-9)
+    # defeito lateral no estresse (5, 6, 11, 12): diferença claramente positiva, maior que a dos outros segmentos
+    assert min(dif[x] for x in (5, 6, 11, 12)) > max(dif[x] for x in (1, 2, 3, 7, 8, 9)) + 5
+    p = cmd(s, acao="polar")["polar"]["diferenca"]
+    assert len(p["segmentos"]) == 17 and p["teto"] == 30.0
+    assert len(s.imagem({"fonte": "polar_diferenca"})) == 256 * 256 * 4
+    cmd(s, acao="pontuar_todos", estudo="estresse", escore=0)
+    cmd(s, acao="pontuar_todos", estudo="repouso", escore=0)
+    r = cmd(s, acao="resultados")
+    assert r["segmentos"][4]["captacao_diferenca"] == pytest.approx(round(rep[5] - est[5], 1))
+    assert "Repouso − estresse" in cmd(s, acao="laudo")["html"]
+    assert "Captação repouso − estresse" in s.exportar({"formato": "csv"}).decode("utf-8")

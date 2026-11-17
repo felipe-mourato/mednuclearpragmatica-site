@@ -336,6 +336,14 @@ class Sessao:
                 raise ErroSessao(str(erro)) from None
         return self._polar[estudo]
 
+    def mapa_diferenca(self) -> polar.MapaPolar | None:
+        """Mapa polar repouso − estresse (pontos percentuais), amostra a amostra; None sem os dois estudos com eixo."""
+        if not all(self._fonte(e) and e in self.eixos for e in PONTUADOS):
+            return None
+        est, rep = self.mapa_polar("estresse"), self.mapa_polar("repouso")
+        return polar.MapaPolar(parede=rep.parede - est.parede, apice=rep.apice - est.apice, maximo=1.0, r_c_mm=est.r_c_mm,
+                               rho_apice=0.5 * (est.rho_apice + rep.rho_apice), azimutes=est.azimutes)
+
     def _teto(self, estudo) -> float:
         return self.mapa_polar(estudo).maximo * self.tetos.get(estudo, 100.0) / 100.0
 
@@ -568,7 +576,7 @@ class Sessao:
         * ``sinograma`` (arquivo, linha) e ``linograma`` (arquivo);
         * ``transaxial`` (estudo, corte) e ``plano_vertical`` (estudo; ou corte, base_1, apice_1);
         * ``faixa`` (estudo, tipo SA | VLA | HLA) e ``previa`` (estudo: SA, VLA e HLA do meio);
-        * ``polar`` (estudo; com_escores);
+        * ``polar`` (estudo; com_escores) e ``polar_diferenca`` (repouso − estresse);
         * ``faixa_gated`` (estudo, tipo, intervalo): cortes de um intervalo do gated;
         * ``polar_funcao`` (estudo, tipo motilidade | espessamento; com_escores);
         * ``contornos`` (estudo, intervalo): eixo curto apical, médio e basal e eixos longos com endo e epicárdio.
@@ -633,6 +641,12 @@ class Sessao:
             esc = self.escores_funcao[tipo][estudo] if pedido.get("com_escores") else None
             return figuras.polar_rgba(mp.imagem(LADO_POLAR), mp.rho_apice, pedido.get("mapa") or self.mapa, esc,
                                       teto=TETO_FUNCAO[tipo]).tobytes()
+        if fonte == "polar_diferenca":
+            dif = self.mapa_diferenca()
+            if dif is None:
+                raise ErroSessao("Trace o eixo do estresse e do repouso para ver as diferenças.")
+            return figuras.polar_rgba(dif.imagem(LADO_POLAR), dif.rho_apice, pedido.get("mapa") or self.mapa, None,
+                                      teto=relatorio.TETO_DIFERENCA).tobytes()
         if fonte == "polar":
             mp = self.mapa_polar(estudo)
             esc = self.escores.get(estudo) if pedido.get("com_escores") and estudo in PONTUADOS else None
@@ -690,7 +704,14 @@ class Sessao:
                 "segmentos": polar.geometria_segmentos(mp.rho_apice, LADO_POLAR),
                 "escores": {str(s): self.escores[est].get(s) for s in polar.SEGMENTOS} if est in PONTUADOS else None,
             }
-        return {"lado": LADO_POLAR, "estudos": estudos, "nomes": {str(k): v for k, v in polar.NOMES.items()},
+        dif = self.mapa_diferenca()
+        diferenca = None if dif is None else {
+            "valores": {str(s): round(v, 1) for s, v in dif.valores_segmentos().items()},
+            "rho_apice": dif.rho_apice,
+            "segmentos": polar.geometria_segmentos(dif.rho_apice, LADO_POLAR),
+            "teto": relatorio.TETO_DIFERENCA,
+        }
+        return {"lado": LADO_POLAR, "estudos": estudos, "diferenca": diferenca, "nomes": {str(k): v for k, v in polar.NOMES.items()},
                 "territorio": {str(k): v for k, v in polar.TERRITORIO_DO_SEGMENTO.items()}}
 
     def _resultados(self) -> dict:
@@ -867,6 +888,10 @@ class Sessao:
             if self._fonte(e) and e in self.eixos:
                 mp = self.mapa_polar(e)
                 polares.append((ROTULO_ESTUDO[e], figuras.png(figuras.polar_rgba(mp.imagem(LADO_POLAR), mp.rho_apice, self.mapa, self.escores[e]))))
+        dif = self.mapa_diferenca()
+        if dif is not None:
+            polares.append((f"Repouso − estresse (0 a {relatorio.TETO_DIFERENCA:.0f} pontos)",
+                            figuras.png(figuras.polar_rgba(dif.imagem(LADO_POLAR), dif.rho_apice, self.mapa, None, teto=relatorio.TETO_DIFERENCA))))
         return {"cortes": cortes, "polares": polares}
 
     def laudo(self, paciente: str = "", data_exame: str = "", versoes_extra: dict | None = None, com_imagens: bool = True, malhas=None) -> str:

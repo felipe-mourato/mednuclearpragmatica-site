@@ -1166,6 +1166,28 @@
       visor.appendChild(svg);
       area.appendChild(fig);
     }
+    if (p.diferenca) {
+      // repouso − estresse, em pontos percentuais: só leitura (não se pontua aqui)
+      const d = p.diferenca;
+      const fig = document.createElement('figure');
+      fig.className = 'polar polar-diferenca';
+      fig.innerHTML = `<figcaption>Repouso − estresse (captação)</figcaption><div class="polar-visor"></div>
+        <div class="legenda-escala"><span>0</span><canvas width="120" height="8" data-barra-cor></canvas><span>${d.teto} pontos</span></div>
+        <p class="nota">Captação do repouso menos a do estresse, em pontos percentuais (cada estudo em % do próprio máximo). Positivo = maior no repouso. Diferença negativa aparece como 0 na cor; o número mostra o sinal.</p>`;
+      const visor = $('.polar-visor', fig);
+      visor.appendChild(imagemColorida({ fonte: 'polar_diferenca' }, p.lado, p.lado, 'polar-img'));
+      const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      svg.setAttribute('viewBox', `0 0 ${p.lado} ${p.lado}`);
+      svg.innerHTML = d.segmentos.map((g) => {
+        const s = String(g.segmento);
+        const v = Math.round(d.valores[s]);
+        const texto = v > 0 ? `+${v}` : v < 0 ? `−${-v}` : '0';
+        return `<g class="seg-info"><path d="${g.caminho}"/><text x="${g.rotulo[0]}" y="${g.rotulo[1] + 5}" text-anchor="middle">${texto}</text><title>${s}. ${esc(p.nomes[s])}: repouso − estresse = ${texto} pontos</title></g>`;
+      }).join('');
+      visor.appendChild(svg);
+      area.appendChild(fig);
+      pintarBarra($('[data-barra-cor]', fig));
+    }
     renderResumo(p);
   }
 
@@ -1180,12 +1202,12 @@
     const opcoes = (v) => ['', 0, 1, 2, 3, 4].map((x) => `<option value="${x}" ${String(v ?? '') === String(x) ? 'selected' : ''}>${x === '' ? '–' : x}</option>`).join('');
     const tem = (n) => Boolean(p.estudos[n]);
     $('[data-tabela-segmentos]').innerHTML = `
-      <thead><tr><th scope="col">Segmento</th><th scope="col">Território</th><th scope="col">Escore estresse</th><th scope="col">Escore repouso</th><th scope="col">Captação estresse</th><th scope="col">Captação repouso</th></tr></thead>
+      <thead><tr><th scope="col">Segmento</th><th scope="col">Território</th><th scope="col">Escore estresse</th><th scope="col">Escore repouso</th><th scope="col">Captação estresse</th><th scope="col">Captação repouso</th><th scope="col">Repouso − estresse</th></tr></thead>
       <tbody>${r.segmentos.map((l) => `<tr>
         <th scope="row">${l.segmento}. ${esc(l.nome)}</th><td>${esc(l.territorio)}</td>
         <td>${tem('estresse') ? `<select data-escore="estresse:${l.segmento}" aria-label="Escore de estresse do segmento ${l.segmento}">${opcoes(l.estresse)}</select>` : '—'}</td>
         <td>${tem('repouso') ? `<select data-escore="repouso:${l.segmento}" aria-label="Escore de repouso do segmento ${l.segmento}">${opcoes(l.repouso)}</select>` : '—'}</td>
-        <td>${esc(l.textos.captacao_estresse)}</td><td>${esc(l.textos.captacao_repouso)}</td></tr>`).join('')}</tbody>`;
+        <td>${esc(l.textos.captacao_estresse)}</td><td>${esc(l.textos.captacao_repouso)}</td><td>${esc(l.textos.captacao_diferenca)}</td></tr>`).join('')}</tbody>`;
     const avisos = r.avisos || [];
     $('[data-avisos-5]').innerHTML = avisos.length ? `<div class="alerta" role="status"><ul>${avisos.map((a) => `<li>${esc(a)}</li>`).join('')}</ul></div>` : '';
   }

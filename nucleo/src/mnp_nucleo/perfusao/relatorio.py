@@ -40,12 +40,16 @@ AVISO = (
     "dado sai do seu computador."
 )
 
+#: Escala do mapa das diferenças (repouso − estresse), em pontos percentuais (só exibição).
+TETO_DIFERENCA = 30.0
+
 NOTAS_METODO = (
     "Escala por segmento: 0 normal; 1 hipocaptação discreta; 2 moderada; 3 acentuada; 4 ausência de captação (SBC 2020; ASNC 2017).",
     "SSS = soma dos 17 escores do estresse; SRS = soma do repouso; SDS = SSS − SRS (ASNC 2017, Tabela 12).",
     "Percentual do VE = escore somado ÷ 68 × 100, porque 68 = 4 × 17 é o máximo (ASNC 2017).",
     "Faixas do SSS: < 4 normal; 4 a 8 discretamente anormal; 9 a 13 moderadamente anormal; > 13 francamente anormal (SBC 2020, citando Hachamovitch).",
     "Captação no mapa polar: perfil de contagem máxima ao longo de raios a partir do eixo, em % do máximo do VE; o valor do segmento é a média das amostras dele. Sem banco de normalidade: os valores apoiam a pontuação visual, não classificam.",
+    "Diferença de captação: repouso menos estresse, amostra a amostra, em pontos percentuais (cada estudo normalizado ao máximo do próprio VE). Positiva = captação maior no repouso, como na reversibilidade. Como cada estudo é normalizado ao próprio máximo, um defeito extenso no estresse muda a referência; é apoio à pontuação, não critério.",
 )
 
 
@@ -66,6 +70,12 @@ NOTAS_FUNCAO = (
     "Mostrada sem ponto de corte: o limiar depende do protocolo, do radiofármaco e do programa.",
     "Volumes indexados pela superfície corporal de Mosteller (√(altura × peso ÷ 3600)), com peso e altura digitados.",
 )
+
+
+def _sinal(v: float) -> str:
+    """Diferença em pontos percentuais com sinal: +10, −3, 0."""
+    r = round(v)
+    return ("+" if r > 0 else "−" if r < 0 else "") + fmt_dec(abs(r), 0)
 
 
 def _txt(v) -> str:
@@ -93,12 +103,14 @@ def tabela_segmentos(r: Escores, valores: dict) -> list[dict]:
                 "diferenca": None if e is None or p is None else e - p,
                 "captacao_estresse": None if ve is None else round(ve, 1),
                 "captacao_repouso": None if vr is None else round(vr, 1),
+                "captacao_diferenca": None if ve is None or vr is None else round(vr - ve, 1),
                 "textos": {
                     "estresse": _txt(e),
                     "repouso": _txt(p),
                     "diferenca": _txt(None if e is None or p is None else e - p),
                     "captacao_estresse": "—" if ve is None else fmt_dec(ve, 0) + "%",
                     "captacao_repouso": "—" if vr is None else fmt_dec(vr, 0) + "%",
+                    "captacao_diferenca": "—" if ve is None or vr is None else _sinal(vr - ve),
                 },
             }
         )
@@ -162,12 +174,14 @@ def _tabela_segmentos_html(r: Escores, valores: dict) -> str:
     linhas = "".join(
         f'<tr><th scope="row">{l["segmento"]}. {escape(l["nome"])}</th><td>{escape(l["territorio"])}</td>'
         f'<td>{escape(l["textos"]["estresse"])}</td><td>{escape(l["textos"]["repouso"])}</td><td>{escape(l["textos"]["diferenca"])}</td>'
-        f'<td>{escape(l["textos"]["captacao_estresse"])}</td><td>{escape(l["textos"]["captacao_repouso"])}</td></tr>'
+        f'<td>{escape(l["textos"]["captacao_estresse"])}</td><td>{escape(l["textos"]["captacao_repouso"])}</td>'
+        f'<td>{escape(l["textos"]["captacao_diferenca"])}</td></tr>'
         for l in tabela_segmentos(r, valores)
     )
     return ('<table class="laudo-segmentos"><thead><tr><th scope="col">Segmento</th><th scope="col">Território</th>'
             '<th scope="col">Escore estresse</th><th scope="col">Escore repouso</th><th scope="col">Diferença</th>'
-            '<th scope="col">Captação estresse</th><th scope="col">Captação repouso</th></tr></thead>'
+            '<th scope="col">Captação estresse</th><th scope="col">Captação repouso</th>'
+            '<th scope="col">Captação repouso − estresse (pontos)</th></tr></thead>'
             f"<tbody>{linhas}</tbody></table>")
 
 
@@ -183,10 +197,10 @@ def tabelas_texto(r: Escores, valores: dict) -> str:
     linhas += ["", "Território\tSegmentos\tSoma estresse\tSoma repouso\tDiferença"]
     for l in tabela_territorios(r):
         linhas.append(f"{l['nome']} ({l['territorio']})\t{l['segmentos']}\t{l['estresse']}\t{l['repouso']}\t{l['diferenca']}")
-    linhas += ["", "Segmento\tTerritório\tEscore estresse\tEscore repouso\tDiferença\tCaptação estresse\tCaptação repouso"]
+    linhas += ["", "Segmento\tTerritório\tEscore estresse\tEscore repouso\tDiferença\tCaptação estresse\tCaptação repouso\tCaptação repouso − estresse"]
     for l in tabela_segmentos(r, valores):
         t = l["textos"]
-        linhas.append(f"{l['segmento']}. {l['nome']}\t{l['territorio']}\t{t['estresse']}\t{t['repouso']}\t{t['diferenca']}\t{t['captacao_estresse']}\t{t['captacao_repouso']}")
+        linhas.append(f"{l['segmento']}. {l['nome']}\t{l['territorio']}\t{t['estresse']}\t{t['repouso']}\t{t['diferenca']}\t{t['captacao_estresse']}\t{t['captacao_repouso']}\t{t['captacao_diferenca']}")
     return "\n".join(linhas) + "\n"
 
 
@@ -197,10 +211,10 @@ def _linhas_exportacao(r: Escores, valores: dict) -> list[list]:
     linhas += [[], ["Território", "Segmentos", "Soma estresse", "Soma repouso", "Diferença"]]
     for t, d in r.territorios.items():
         linhas.append([f"{NOME_TERRITORIO[t]} ({t})", ", ".join(str(s) for s in TERRITORIOS[t]), _num(d["estresse"]), _num(d["repouso"]), _num(d["diferenca"])])
-    linhas += [[], ["Segmento", "Nome", "Território", "Escore estresse", "Escore repouso", "Diferença", "Captação estresse (%)", "Captação repouso (%)"]]
+    linhas += [[], ["Segmento", "Nome", "Território", "Escore estresse", "Escore repouso", "Diferença", "Captação estresse (%)", "Captação repouso (%)", "Captação repouso − estresse (pontos)"]]
     for l in tabela_segmentos(r, valores):
         linhas.append([l["segmento"], l["nome"], l["territorio"], _num(l["estresse"]), _num(l["repouso"]), _num(l["diferenca"]),
-                       _num(l["captacao_estresse"]), _num(l["captacao_repouso"])])
+                       _num(l["captacao_estresse"]), _num(l["captacao_repouso"]), _num(l["captacao_diferenca"])])
     return linhas
 
 
@@ -304,7 +318,8 @@ def _figuras_html(imagens: dict | None) -> str:
         blocos.append(f'<div class="laudo-polares">{polares}</div>'
                       '<p class="laudo-legenda">Mapas polares: ápice no centro, base na periferia; anterior em cima, septo à esquerda, '
                       "lateral à direita e inferior embaixo. Números: escore visual de cada segmento (– = não pontuado). Cores em % do "
-                      "máximo do VE de cada estudo.</p>")
+                      "máximo do VE de cada estudo. Mapa das diferenças: captação do repouso menos a do estresse, em pontos percentuais, "
+                      f"de 0 a {TETO_DIFERENCA:.0f} (diferença negativa aparece como 0); valores por segmento na tabela.</p>")
     return '<section class="laudo-imagens"><h3>Imagens</h3>' + "".join(blocos) + "</section>"
 
 
