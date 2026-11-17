@@ -38,7 +38,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 __all__ = ["Fonte", "BIBLIOGRAFIA", "SBC_2020", "ASNC_2017", "GERMANO_2001", "LYRA_2011", "CERQUEIRA_2002", "GERMANO_2000", "KAK_1988",
-           "GERMANO_1995", "GERMANO_1997", "ABIDOV_2004", "MOSTELLER_1987", "MANUAL_QGS", "BIBLIOGRAFIA_GATED"]
+           "GERMANO_1995", "GERMANO_1997", "ABIDOV_2004", "MOSTELLER_1987", "MANUAL_QGS", "BIBLIOGRAFIA_GATED", "CUBERAS_2010"]
 
 
 @dataclass(frozen=True)
@@ -118,6 +118,13 @@ MANUAL_QGS = Fonte(
     "Manual do QGS/QPS",
     "Cedars-Sinai Medical Center. QGS+QPS: manual de referência do usuário (escalas dos mapas de função, escores e "
     "descrição geral do algoritmo).",
+    None,
+)
+
+CUBERAS_2010 = Fonte(
+    "Cuberas-Borrós et al., 2010",
+    "Cuberas-Borrós G, Aguadé-Bruix S, Boronat-de Ferrater M, et al. Normal myocardial perfusion SPECT database for the "
+    "Spanish population. Rev Esp Cardiol. 2010;63(8):934-42 (banco de normalidade do escore automático).",
     None,
 )
 

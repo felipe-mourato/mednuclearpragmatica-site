@@ -106,7 +106,7 @@ _DIGITOS = {
 }
 
 
-def _escrever(rgb: np.ndarray, texto: str, cx: float, cy: float, escala: int = 2) -> None:
+def _escrever(rgb: np.ndarray, texto: str, cx: float, cy: float, escala: int = 2, cor=(255, 255, 255), contorno=(8, 16, 25)) -> None:
     larg = len(texto) * 6 * escala - escala
     x0 = int(round(cx - larg / 2))
     y0 = int(round(cy - 7 * escala / 2))
@@ -120,11 +120,12 @@ def _escrever(rgb: np.ndarray, texto: str, cx: float, cy: float, escala: int = 2
                     ys = slice(y0 + r * escala, y0 + (r + 1) * escala)
                     xs = slice(x0 + (k * 6 + c) * escala, x0 + (k * 6 + c + 1) * escala)
                     # contorno escuro e algarismo branco
-                    rgb[max(ys.start - 1, 0) : ys.stop + 1, max(xs.start - 1, 0) : xs.stop + 1] = (8, 16, 25)
+                    if contorno is not None:
+                        rgb[max(ys.start - 1, 0) : ys.stop + 1, max(xs.start - 1, 0) : xs.stop + 1] = contorno
         for r, linha in enumerate(mapa):
             for c, bit in enumerate(linha):
                 if bit == "1":
-                    rgb[y0 + r * escala : y0 + (r + 1) * escala, x0 + (k * 6 + c) * escala : x0 + (k * 6 + c + 1) * escala] = (255, 255, 255)
+                    rgb[y0 + r * escala : y0 + (r + 1) * escala, x0 + (k * 6 + c) * escala : x0 + (k * 6 + c + 1) * escala] = cor
 
 
 def polar_rgba(mapa_img: np.ndarray, rho_apice: float, mapa: str = "quente", escores: dict | None = None, lado: int | None = None,
@@ -201,3 +202,37 @@ def contornos_rgba(vol, paineis, malhas, teto: float, mapa: str = "quente", espa
                 _linha(rgb, pa, pb, cor, 2)
         partes.append(rgb)
     return rgba_bytes(np.concatenate(partes, axis=1))
+
+
+#: Cores dos escores 0–4 no mapa de escore automático (as mesmas dos botões de pontuação da tela).
+CORES_ESCORE = {0: (232, 237, 243), 1: (251, 227, 180), 2: (246, 184, 107), 3: (229, 120, 46), 4: (184, 68, 26)}
+
+
+def escores_rgba(rho_apice: float, escores: dict, lado: int) -> np.ndarray:
+    """Mapa polar com cada segmento pintado pela cor do escore (0–4) e o número escrito; fora do círculo, transparente."""
+    m = (lado - 1) / 2.0
+    yy, xx = np.mgrid[0:lado, 0:lado]
+    x = (xx - m) / (m + 0.5)
+    y = (m - yy) / (m + 0.5)
+    rho = np.hypot(x, y)
+    ang = np.degrees(np.arctan2(y, x)) % 360.0
+    dentro = rho <= 1.0
+    seg = np.zeros((lado, lado), dtype=int)
+    seg[dentro] = [segmento_em(r, a, rho_apice) for r, a in zip(rho[dentro], ang[dentro])]
+    rgb = np.zeros((lado, lado, 3), dtype=np.uint8)
+    for s in range(1, 18):
+        v = escores.get(s)
+        rgb[seg == s] = CORES_ESCORE.get(v, (200, 205, 210)) if v is not None else (200, 205, 210)
+    borda = np.zeros_like(dentro)
+    borda[:-1, :] |= seg[:-1, :] != seg[1:, :]
+    borda[:, :-1] |= seg[:, :-1] != seg[:, 1:]
+    borda &= dentro | np.roll(dentro, 1, 0) | np.roll(dentro, 1, 1)
+    rgb[borda] = (90, 100, 112)
+    for g in geometria_segmentos(rho_apice, lado):
+        v = escores.get(g["segmento"])
+        claro = v is None or v <= 2
+        _escrever(rgb, "–" if v is None else str(int(v)), g["rotulo"][0], g["rotulo"][1], escala=max(1, lado // 128),
+                  cor=(15, 39, 64) if claro else (255, 255, 255), contorno=None)
+    rgba = rgba_bytes(rgb)
+    rgba[..., 3] = np.where(dentro | borda, 255, 0)
+    return rgba

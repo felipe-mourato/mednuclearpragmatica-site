@@ -24,7 +24,7 @@ from .. import __version__, versoes
 from ..comum import exibicao
 from ..comum.dicom import ErroDicom
 from ..comum.tabela import fmt_dec, fmt_int
-from . import controle, eixos, figuras, gated, polar, relatorio
+from . import controle, eixos, figuras, gated, normalidade, polar, relatorio
 from .aquisicao import ROTULOS_TIPO, TIPOS, Aquisicao, adivinhar_tipo, ler_aquisicao
 from .escores import calcular_escores, validar_escore
 from .reconstrucao import CORTE_PADRAO, ORDEM_PADRAO, Filtro, Volume, butterworth, reconstruir
@@ -85,6 +85,7 @@ class Sessao:
         self._eixo_fonte: dict[str, str] = {}
         self.escores_funcao: dict[str, dict[str, dict[int, int]]] = {t: {e: {} for e in PONTUADOS} for t in TIPOS_FUNCAO}
         self.antropometria: dict[str, float] = {}
+        self.sexo: str | None = None
         self._vol_gated: dict = {}
         self._gated: dict = {}
         self._cortes_gated: dict = {}
@@ -344,6 +345,30 @@ class Sessao:
         return polar.MapaPolar(parede=rep.parede - est.parede, apice=rep.apice - est.apice, maximo=1.0, r_c_mm=est.r_c_mm,
                                rho_apice=0.5 * (est.rho_apice + rep.rho_apice), azimutes=est.azimutes)
 
+    def definir_sexo(self, sexo) -> None:
+        """Sexo para o escore automático (banco de normalidade): F, M ou vazio. Escolhido na tela, nunca lido do DICOM."""
+        if sexo in (None, ""):
+            self.sexo = None
+            return
+        if sexo not in normalidade.SEXOS:
+            raise ErroSessao("Sexo deve ser F ou M.")
+        self.sexo = sexo
+
+    def automatico(self) -> dict | None:
+        """Escore automático (guia) por segmento, pelo banco espanhol e o sexo escolhido; None sem sexo ou sem eixo."""
+        if not self.sexo:
+            return None
+        estudos = {}
+        for e in PONTUADOS:
+            if self._fonte(e) and e in self.eixos:
+                estudos[e] = normalidade.escores_automaticos(self.mapa_polar(e).valores_segmentos(), self.sexo, e)
+        if not estudos:
+            return None
+        r = calcular_escores({s: d["escore"] for s, d in estudos.get("estresse", {}).items()},
+                             {s: d["escore"] for s, d in estudos.get("repouso", {}).items()})
+        return {"sexo": self.sexo, "estudos": estudos, "somas": {"sss": r.sss, "srs": r.srs, "sds": r.sds},
+                "descricao": normalidade.DESCRICAO_BANCO, "citacao": normalidade.CITACAO_BANCO, "limiares_z": list(normalidade.LIMIARES_Z)}
+
     def _teto(self, estudo) -> float:
         return self.mapa_polar(estudo).maximo * self.tetos.get(estudo, 100.0) / 100.0
 
@@ -510,6 +535,7 @@ class Sessao:
             "tid": self.tid(),
             "superficie_corporal": round(sc, 2) if sc else None,
             "antropometria": dict(self.antropometria),
+            "sexo": self.sexo,
             "lado": LADO_POLAR,
             "metodo": {"fracao_sd": gated.FRACAO_SD, "limiar_valva": gated.LIMIAR_VALVA},
             "contornos": {"largura": 5 * figuras.LADO_CONTORNO + 4 * 4, "altura": figuras.LADO_CONTORNO,
@@ -641,6 +667,12 @@ class Sessao:
             esc = self.escores_funcao[tipo][estudo] if pedido.get("com_escores") else None
             return figuras.polar_rgba(mp.imagem(LADO_POLAR), mp.rho_apice, pedido.get("mapa") or self.mapa, esc,
                                       teto=TETO_FUNCAO[tipo]).tobytes()
+        if fonte == "polar_automatico":
+            auto = self.automatico()
+            if auto is None or estudo not in auto["estudos"]:
+                raise ErroSessao("Escolha o sexo para ver o escore automático.")
+            mp = self.mapa_polar(estudo)
+            return figuras.escores_rgba(mp.rho_apice, {s: d["escore"] for s, d in auto["estudos"][estudo].items()}, LADO_POLAR).tobytes()
         if fonte == "polar_diferenca":
             dif = self.mapa_diferenca()
             if dif is None:
@@ -711,7 +743,14 @@ class Sessao:
             "segmentos": polar.geometria_segmentos(dif.rho_apice, LADO_POLAR),
             "teto": relatorio.TETO_DIFERENCA,
         }
-        return {"lado": LADO_POLAR, "estudos": estudos, "diferenca": diferenca, "nomes": {str(k): v for k, v in polar.NOMES.items()},
+        auto = self.automatico()
+        automatico = None if auto is None else {
+            "sexo": auto["sexo"], "somas": auto["somas"], "descricao": auto["descricao"],
+            "estudos": {e: {str(s): {"escore": d["escore"], "z": round(d["z"], 2), "media": d["media"], "dp": d["dp"]} for s, d in v.items()}
+                        for e, v in auto["estudos"].items()},
+        }
+        return {"lado": LADO_POLAR, "estudos": estudos, "diferenca": diferenca, "automatico": automatico, "sexo": self.sexo,
+                "nomes": {str(k): v for k, v in polar.NOMES.items()},
                 "territorio": {str(k): v for k, v in polar.TERRITORIO_DO_SEGMENTO.items()}}
 
     def _resultados(self) -> dict:
@@ -721,14 +760,18 @@ class Sessao:
         r = self.calcular_escores()
         valores = {e: self.mapa_polar(e).valores_segmentos() for e in PONTUADOS if self._fonte(e)}
         fun = self._funcao_relatorio()
+        auto = self.automatico()
         return {
             "funcao": fun,
+            "automatico": None if auto is None else {"somas": auto["somas"], "sexo": auto["sexo"], "descricao": auto["descricao"]},
             "segmentos": relatorio.tabela_segmentos(r, valores),
             "resumo": relatorio.resumo_escores(r),
             "territorios": relatorio.tabela_territorios(r),
             "avisos": r.avisos,
-            "tabelas_html": relatorio.tabelas_html(r, valores) + relatorio.funcao_tabelas_html(fun),
-            "tabelas_texto": relatorio.tabelas_texto(r, valores) + relatorio.funcao_texto(fun),
+            "tabelas_html": relatorio.tabelas_html(r, valores) + relatorio.automatico_html(auto) + relatorio.funcao_tabelas_html(fun),
+            "tabelas_texto": relatorio.tabelas_texto(r, valores)
+            + "".join("\n" + "\t".join(str(c) for c in ln) for ln in relatorio.linhas_automatico(auto))
+            + relatorio.funcao_texto(fun),
             "versao": __version__,
         }
 
@@ -796,6 +839,7 @@ class Sessao:
             "gated": self.gated_disponiveis(),
             "escores_funcao": {t: {e: {str(s): self.escores_funcao[t][e].get(s) for s in polar.SEGMENTOS} for e in PONTUADOS} for t in TIPOS_FUNCAO},
             "antropometria": dict(self.antropometria),
+            "sexo": self.sexo,
             "reconstruido": all(self._vol_chave(e) in self._vol for e in self.estudos_disponiveis()) and bool(self.estudos_disponiveis()),
             "avisos": self._avisos(),
             "erros": list(self.erros),
@@ -888,11 +932,17 @@ class Sessao:
             if self._fonte(e) and e in self.eixos:
                 mp = self.mapa_polar(e)
                 polares.append((ROTULO_ESTUDO[e], figuras.png(figuras.polar_rgba(mp.imagem(LADO_POLAR), mp.rho_apice, self.mapa, self.escores[e]))))
+        auto = self.automatico()
+        automatico = []
+        if auto is not None:
+            for e, d in auto["estudos"].items():
+                mp = self.mapa_polar(e)
+                automatico.append((ROTULO_ESTUDO[e], figuras.png(figuras.escores_rgba(mp.rho_apice, {s: v["escore"] for s, v in d.items()}, LADO_POLAR))))
         dif = self.mapa_diferenca()
         if dif is not None:
             polares.append((f"Repouso − estresse (0 a {relatorio.TETO_DIFERENCA:.0f} pontos)",
                             figuras.png(figuras.polar_rgba(dif.imagem(LADO_POLAR), dif.rho_apice, self.mapa, None, teto=relatorio.TETO_DIFERENCA))))
-        return {"cortes": cortes, "polares": polares}
+        return {"cortes": cortes, "polares": polares, "automatico": automatico}
 
     def laudo(self, paciente: str = "", data_exame: str = "", versoes_extra: dict | None = None, com_imagens: bool = True, malhas=None) -> str:
         res = self._resultados()
@@ -913,6 +963,7 @@ class Sessao:
             mapa=self.mapa,
             pixel_mm=next((a.aq.pixel_mm for a in self.arquivos.values()), None),
             funcao=res["funcao"],
+            automatico=self.automatico(),
             imagens_funcao=self._imagens_funcao(malhas) if com_imagens and res["funcao"] else None,
         )
 
@@ -929,6 +980,7 @@ class Sessao:
             "escores": {e: {str(s): v for s, v in self.escores[e].items()} for e in PONTUADOS},
             "escores_funcao": {t: {e: {str(s): v for s, v in self.escores_funcao[t][e].items()} for e in PONTUADOS} for t in TIPOS_FUNCAO},
             "exibicao": {"mapa": self.mapa, "tetos": dict(self.tetos)},
+            "sexo": self.sexo,
         }
 
     @classmethod
@@ -965,6 +1017,7 @@ class Sessao:
                 for e, d in por_estudo.items():
                     if e in PONTUADOS:
                         s.escores_funcao[tipo][e] = {int(k): gated.validar_escore_funcao(tipo, v) for k, v in d.items()}
+        s.sexo = protocolo.get("sexo") if protocolo.get("sexo") in normalidade.SEXOS else None
         ex = protocolo.get("exibicao") or {}
         s.mapa = ex.get("mapa", s.mapa)
         s.tetos = {k: float(v) for k, v in (ex.get("tetos") or {}).items()}
@@ -1074,6 +1127,9 @@ class Sessao:
             if acao == "copiar_escores_funcao":
                 self.copiar_escores_funcao(c["tipo"], c["de"], c["para"])
                 return self._resposta()
+            if acao == "definir_sexo":
+                self.definir_sexo(c.get("sexo"))
+                return self._resposta()
             if acao == "definir_antropometria":
                 self.definir_antropometria(c.get("peso"), c.get("altura"))
                 return self._resposta()
@@ -1116,8 +1172,9 @@ class Sessao:
         r = self.calcular_escores()
         valores = {e: self.mapa_polar(e).valores_segmentos() for e in PONTUADOS if self._fonte(e)}
         fun = self._funcao_relatorio()
+        auto = self.automatico()
         if formato == "csv":
-            return relatorio.csv_resultados(r, valores, fun)
+            return relatorio.csv_resultados(r, valores, fun, auto)
         if formato == "xlsx":
-            return relatorio.xlsx_resultados(r, valores, self.filtro, __version__, fun)
+            return relatorio.xlsx_resultados(r, valores, self.filtro, __version__, fun, auto)
         raise ErroSessao("Formato de exportação desconhecido.")

@@ -76,6 +76,10 @@ def linha_csv(nome: str, s: Sessao) -> dict:
             linha[f"{e}_{sigla}"] = soma["soma"] if soma else None
     tid = s.tid()
     linha["TID"] = tid["tid"] if tid else None
+    auto = s.automatico()
+    linha["sexo_banco"] = s.sexo
+    for k in ("sss", "srs", "sds"):
+        linha[f"{k.upper()}_automatico"] = auto["somas"][k] if auto else None
     return linha
 
 

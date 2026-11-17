@@ -1070,6 +1070,7 @@
     if (!r.ok) { $('[data-polares]').innerHTML = `<p class="erro">${esc(r.erro)}</p>`; return; }
     const f = r.funcao;
     const p = cmd({ acao: 'polar' }).polar;
+    $('[data-automatico]').innerHTML = '';
     const area = $('[data-polares]');
     area.innerHTML = '';
     for (const nome of ['estresse', 'repouso']) {
@@ -1188,7 +1189,48 @@
       area.appendChild(fig);
       pintarBarra($('[data-barra-cor]', fig));
     }
+    renderAutomatico(p);
     renderResumo(p);
+  }
+
+  function renderAutomatico(p) {
+    /* Escore automático (guia) pelo banco espanhol: sexo escolhido aqui, nunca lido do DICOM. */
+    const area = $('[data-automatico]');
+    const a = p.automatico;
+    const botoes = [['F', 'Feminino'], ['M', 'Masculino'], ['', 'Não usar']]
+      .map(([v, rot]) => `<button type="button" data-sexo="${v}" aria-pressed="${(p.sexo || '') === v}">${rot}</button>`).join('');
+    let html = `<h3 class="subtitulo" id="t-auto">Escore automático (guia)</h3>
+      <div class="controles-cortes"><span class="nota">Sexo do paciente, para o banco de normalidade:</span>
+      <span class="alternar" role="group" aria-label="Sexo para o escore automático">${botoes}</span></div>`;
+    if (!a) {
+      html += '<p class="nota">Escolha o sexo para comparar a captação de cada segmento com o banco de normalidade espanhol (Cuberas-Borrós et al., 2010) e gerar um escore 0–4 automático, só como guia.</p>';
+      area.innerHTML = html;
+      return;
+    }
+    html += `<div class="alerta" role="note"><strong>Atenção:</strong> ${esc(a.descricao)}</div>
+      <div class="polares polares-auto"></div>
+      <div class="cartoes-escore">${[['sss', 'SSS automático'], ['srs', 'SRS automático'], ['sds', 'SDS automático']]
+        .map(([k, rot]) => cartao(rot, a.somas[k] ?? '—', 'guia; não substitui a pontuação visual')).join('')}</div>`;
+    area.innerHTML = html;
+    const caixa = $('.polares-auto', area);
+    for (const nome of ['estresse', 'repouso']) {
+      const d = a.estudos[nome];
+      if (!d) continue;
+      const fig = document.createElement('figure');
+      fig.className = 'polar';
+      fig.innerHTML = `<figcaption>${esc(estudoPorNome(nome).rotulo)} · automático</figcaption><div class="polar-visor"></div>`;
+      $('.polar-visor', fig).appendChild(imagemColorida({ fonte: 'polar_automatico', estudo: nome }, p.lado, p.lado, 'polar-img'));
+      const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      svg.setAttribute('viewBox', `0 0 ${p.lado} ${p.lado}`);
+      const geo = p.estudos[nome].segmentos;
+      svg.innerHTML = geo.map((g) => {
+        const s = String(g.segmento);
+        const x = d[s];
+        return `<g class="seg-info"><path d="${g.caminho}"/><title>${s}. ${esc(p.nomes[s])}: captação ${num(p.estudos[nome].valores[s], 0)}% · banco ${num(x.media, 1)} ± ${num(x.dp, 1)} · z ${num(x.z, 1)} · escore ${x.escore}</title></g>`;
+      }).join('');
+      $('.polar-visor', fig).appendChild(svg);
+      caixa.appendChild(fig);
+    }
   }
 
   function renderResumo(p) {
@@ -1202,12 +1244,12 @@
     const opcoes = (v) => ['', 0, 1, 2, 3, 4].map((x) => `<option value="${x}" ${String(v ?? '') === String(x) ? 'selected' : ''}>${x === '' ? '–' : x}</option>`).join('');
     const tem = (n) => Boolean(p.estudos[n]);
     $('[data-tabela-segmentos]').innerHTML = `
-      <thead><tr><th scope="col">Segmento</th><th scope="col">Território</th><th scope="col">Escore estresse</th><th scope="col">Escore repouso</th><th scope="col">Captação estresse</th><th scope="col">Captação repouso</th><th scope="col">Repouso − estresse</th></tr></thead>
+      <thead><tr><th scope="col">Segmento</th><th scope="col">Território</th><th scope="col">Escore estresse</th><th scope="col">Escore repouso</th><th scope="col">Captação estresse</th><th scope="col">Captação repouso</th><th scope="col">Repouso − estresse</th>${p.automatico ? '<th scope="col">Automático estresse (z)</th><th scope="col">Automático repouso (z)</th>' : ''}</tr></thead>
       <tbody>${r.segmentos.map((l) => `<tr>
         <th scope="row">${l.segmento}. ${esc(l.nome)}</th><td>${esc(l.territorio)}</td>
         <td>${tem('estresse') ? `<select data-escore="estresse:${l.segmento}" aria-label="Escore de estresse do segmento ${l.segmento}">${opcoes(l.estresse)}</select>` : '—'}</td>
         <td>${tem('repouso') ? `<select data-escore="repouso:${l.segmento}" aria-label="Escore de repouso do segmento ${l.segmento}">${opcoes(l.repouso)}</select>` : '—'}</td>
-        <td>${esc(l.textos.captacao_estresse)}</td><td>${esc(l.textos.captacao_repouso)}</td><td>${esc(l.textos.captacao_diferenca)}</td></tr>`).join('')}</tbody>`;
+        <td>${esc(l.textos.captacao_estresse)}</td><td>${esc(l.textos.captacao_repouso)}</td><td>${esc(l.textos.captacao_diferenca)}</td>${p.automatico ? ['estresse', 'repouso'].map((e) => { const x = p.automatico.estudos[e]?.[String(l.segmento)]; return `<td>${x ? `${x.escore} (${num(x.z, 1)})` : '—'}</td>`; }).join('') : ''}</tr>`).join('')}</tbody>`;
     const avisos = r.avisos || [];
     $('[data-avisos-5]').innerHTML = avisos.length ? `<div class="alerta" role="status"><ul>${avisos.map((a) => `<li>${esc(a)}</li>`).join('')}</ul></div>` : '';
   }
@@ -1340,6 +1382,7 @@
         if (abaMapa === 'perfusao') { pincel = v; renderPolar(); } else { pincelFuncao[abaMapa] = v; renderPolarFuncao(); }
       } else if (d.rotulos) { rotulosPolar = d.rotulos; if (abaMapa === 'perfusao') renderPolar(); else renderPolarFuncao(); }
       else if (d.abaMapa) { abaMapa = d.abaMapa; renderMapas(); }
+      else if (d.sexo !== undefined) { const r = cmd({ acao: 'definir_sexo', sexo: d.sexo || null }); if (!r.ok) avisar(r.erro); renderPolar(); }
       else if (d.todosFuncao) { cmd({ acao: 'pontuar_funcao_todos', tipo: abaMapa, estudo: d.todosFuncao, escore: 0 }); renderPolarFuncao(); }
       else if (d.copiarFuncao) { const [de, para] = d.copiarFuncao.split(':'); cmd({ acao: 'copiar_escores_funcao', tipo: abaMapa, de, para }); renderPolarFuncao(); }
       else if (d.acao === 'cine-gated') { if (cineGated.timer) pararCineGated(); else tocarCineGated(); }

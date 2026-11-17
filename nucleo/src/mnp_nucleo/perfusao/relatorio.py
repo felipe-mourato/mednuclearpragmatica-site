@@ -32,6 +32,8 @@ __all__ = [
     "funcao_texto",
     "linhas_funcao",
     "NOTAS_FUNCAO",
+    "automatico_html",
+    "linhas_automatico",
 ]
 
 AVISO = (
@@ -265,20 +267,24 @@ def linhas_funcao(fun: dict | None) -> list[list]:
     return linhas
 
 
-def csv_resultados(r: Escores, valores: dict, fun: dict | None = None) -> bytes:
+def csv_resultados(r: Escores, valores: dict, fun: dict | None = None, auto: dict | None = None) -> bytes:
     linhas = _linhas_exportacao(r, valores)
+    la = linhas_automatico(auto)
+    linhas = linhas + ([[]] + la if la else [])
     extra = linhas_funcao(fun)
     return gerar_csv(linhas[0], linhas[1:] + ([[]] + extra if extra else []))
 
 
-def xlsx_resultados(r: Escores, valores: dict, filtro: Filtro, versao: str, fun: dict | None = None) -> bytes:
+def xlsx_resultados(r: Escores, valores: dict, filtro: Filtro, versao: str, fun: dict | None = None, auto: dict | None = None) -> bytes:
     extra = linhas_funcao(fun)
+    la = linhas_automatico(auto)
     corpo = [
         ["Cintilografia de perfusão miocárdica (SPECT)"],
         [f"Reconstrução: {descrever_filtro(filtro, None)}"],
         [f"Núcleo mnp-nucleo {versao}"],
         [],
         *_linhas_exportacao(r, valores),
+        *([[]] + la if la else []),
         *([[]] + extra if extra else []),
         [],
         *[[n] for n in NOTAS_METODO],
@@ -321,6 +327,55 @@ def _figuras_html(imagens: dict | None) -> str:
                       "máximo do VE de cada estudo. Mapa das diferenças: captação do repouso menos a do estresse, em pontos percentuais, "
                       f"de 0 a {TETO_DIFERENCA:.0f} (diferença negativa aparece como 0); valores por segmento na tabela.</p>")
     return '<section class="laudo-imagens"><h3>Imagens</h3>' + "".join(blocos) + "</section>"
+
+
+def linhas_automatico(auto: dict | None) -> list[list]:
+    """Linhas do escore automático (guia) para CSV e planilha."""
+    if not auto:
+        return []
+    est = auto["estudos"]
+    sexo = {"F": "feminino", "M": "masculino"}[auto["sexo"]]
+    so = auto["somas"]
+    linhas: list[list] = [[f"Escore automático (guia; banco espanhol, sexo {sexo})", "SSS", "SRS", "SDS"],
+                          ["Somas automáticas", _num(so["sss"]), _num(so["srs"]), _num(so["sds"])], []]
+    cab = ["Segmento", "Nome"]
+    for e in ("estresse", "repouso"):
+        if e in est:
+            cab += [f"Captação {e} (%)", f"Banco {e}: média", f"Banco {e}: DP", f"z {e}", f"Escore automático {e}"]
+    linhas.append(cab)
+    for s in SEGMENTOS:
+        ln = [s, NOMES[s]]
+        for e in ("estresse", "repouso"):
+            if e in est:
+                d = est[e][s]
+                ln += [round(d["captacao"], 1), d["media"], d["dp"], round(d["z"], 2), d["escore"]]
+        linhas.append(ln)
+    linhas += [[auto["descricao"]]]
+    return linhas
+
+
+def automatico_html(auto: dict | None, imagens: list | None = None) -> str:
+    """Seção do escore automático (guia), com o alerta do banco de normalidade."""
+    if not auto:
+        return ""
+    est = auto["estudos"]
+    sexo = {"F": "feminino", "M": "masculino"}[auto["sexo"]]
+    so = auto["somas"]
+    cab = "".join(f'<th scope="col">{escape(e.capitalize())}: captação · z · escore</th>' for e in ("estresse", "repouso") if e in est)
+    corpo = ""
+    for s in SEGMENTOS:
+        cel = "".join(
+            f'<td>{fmt_dec(est[e][s]["captacao"], 0)}% · {fmt_dec(est[e][s]["z"], 1)} · {est[e][s]["escore"]}</td>'
+            for e in ("estresse", "repouso") if e in est)
+        corpo += f'<tr><th scope="row">{s}. {escape(NOMES[s])}</th>{cel}</tr>'
+    figs = "".join(f'<figure class="laudo-polar">{_img(png, f"Escore automático, {rot}", "laudo-polar-img", 200)}<figcaption>{escape(rot)}</figcaption></figure>'
+                   for rot, png in (imagens or []))
+    return (f'<section class="laudo-automatico"><h3>Escore automático (guia)</h3>'
+            f'<p class="laudo-alerta-banco"><strong>Atenção:</strong> {escape(auto["descricao"])}</p>'
+            f'<p>Sexo escolhido: {sexo}. SSS automático {escape(_txt(so["sss"]))}; SRS automático {escape(_txt(so["srs"]))}; '
+            f'SDS automático {escape(_txt(so["sds"]))}.</p>'
+            + (f'<div class="laudo-polares">{figs}</div>' if figs else "")
+            + f'<div class="laudo-tabela"><table class="laudo-auto"><thead><tr><th scope="col">Segmento</th>{cab}</tr></thead><tbody>{corpo}</tbody></table></div></section>')
 
 
 def _curva_svg(volumes: Sequence[float], ed: int, es: int) -> str:
@@ -455,6 +510,7 @@ def laudo_html(
     pixel_mm: float | None = None,
     funcao: dict | None = None,
     imagens_funcao: dict | None = None,
+    automatico: dict | None = None,
 ) -> str:
     """Laudo de processamento em HTML (fragmento), para exibir, imprimir e colar no Word."""
     gerado_em = gerado_em or datetime.now()
@@ -471,7 +527,7 @@ def laudo_html(
     alertas = f'<section class="laudo-alertas"><h3>Atenção</h3><ul>{alertas}</ul></section>' if avisos else ""
     arquivos = "".join(f"<li>{escape(a['rotulo'])}: {escape(a['nome'])} ({escape(a['detalhe'])})</li>" for a in arquivos_info)
     notas = "".join(f"<li>{escape(n)}</li>" for n in NOTAS_METODO + (NOTAS_FUNCAO if funcao else ()))
-    fontes = refs.BIBLIOGRAFIA + (refs.BIBLIOGRAFIA_GATED if funcao else ())
+    fontes = refs.BIBLIOGRAFIA + (refs.BIBLIOGRAFIA_GATED if funcao else ()) + ((refs.CUBERAS_2010,) if automatico else ())
     bib = "".join(f"<li>{escape(f.citacao)}{escape(f' doi:{f.doi}') if f.doi else ''}</li>" for f in fontes)
     fe = ""
     for d in ((funcao or {}).get("estudos") or {}).values():
@@ -499,6 +555,7 @@ def laudo_html(
 <section><h3>Escores (pontuação visual)</h3>{_tabela_resumo_html(r)}{_tabela_territorios_html(r)}
 <div class="laudo-tabela">{_tabela_segmentos_html(r, valores)}</div>
 <p class="laudo-nota">Escala: {escape(escala)}. Os escores são os marcados pelo médico; a captação (% do máximo do VE) vem do mapa polar e não tem banco de normalidade.</p></section>
+{automatico_html(automatico, (imagens or {}).get("automatico"))}
 {_funcao_html(funcao, imagens_funcao)}
 {_gated_html(arquivos_info)}
 <section><h3>Método</h3>

@@ -449,3 +449,42 @@ def test_mapa_das_diferencas(fp):
     assert r["segmentos"][4]["captacao_diferenca"] == pytest.approx(round(rep[5] - est[5], 1))
     assert "Repouso − estresse" in cmd(s, acao="laudo")["html"]
     assert "Captação repouso − estresse" in s.exportar({"formato": "csv"}).decode("utf-8")
+
+
+def test_escore_automatico_banco_espanhol(fp):
+    from mnp_nucleo.perfusao import normalidade as N
+
+    assert [N.escore_de_z(z) for z in (0, -2.5, -2.51, -3.5, -3.6, -4.5, -5.0, -5.5, -9)] == [0, 1, 1, 2, 2, 3, 3, 4, 4]
+    # transcrição das figuras 2 e 3: 17 segmentos por sexo e estado, DP plausíveis
+    for sexo in N.SEXOS:
+        for estado in ("estresse", "repouso"):
+            b = N.BANCO_ESPANHOL[sexo][estado]
+            assert sorted(b) == list(range(1, 18))
+            assert all(40 < m < 95 and 3 < dp < 12 for m, dp in b.values())
+    assert N.BANCO_ESPANHOL["M"]["estresse"][1] == (50.0, 11.37) and N.BANCO_ESPANHOL["F"]["repouso"][14] == (83.13, 5.34)
+    r = N.escores_automaticos({s: N.BANCO_ESPANHOL["F"]["estresse"][s][0] - 3 * N.BANCO_ESPANHOL["F"]["estresse"][s][1] for s in range(1, 18)}, "F", "estresse")
+    assert all(d["escore"] == 1 and abs(d["z"] + 3) < 1e-9 for d in r.values())
+    with pytest.raises(ValueError):
+        N.escores_automaticos({}, "X", "estresse")
+
+    s = Sessao()
+    for n in ("estresse.dcm", "repouso.dcm"):
+        s.adicionar_arquivo(n, fp.arquivos[n])
+    cmd(s, acao="eixo_fantoma")
+    assert cmd(s, acao="polar")["polar"]["automatico"] is None
+    assert not cmd(s, acao="definir_sexo", sexo="X")["ok"]
+    assert cmd(s, acao="definir_sexo", sexo="M")["ok"]
+    a = cmd(s, acao="polar")["polar"]["automatico"]
+    est = a["estudos"]["estresse"]
+    # o defeito lateral de 50% do fantoma aparece como escore automático maior que nos segmentos opostos
+    assert min(est[x]["escore"] for x in ("5", "11")) >= 1
+    assert a["somas"]["sss"] == sum(v["escore"] for v in est.values())
+    assert len(s.imagem({"fonte": "polar_automatico", "estudo": "repouso"})) == 256 * 256 * 4
+    cmd(s, acao="pontuar_todos", estudo="estresse", escore=0)
+    cmd(s, acao="pontuar_todos", estudo="repouso", escore=0)
+    h = cmd(s, acao="laudo")["html"]
+    assert "Escore automático (guia)" in h and "Cuberas-Borrós" in h and "não foi validado" in h
+    assert "Escore automático estresse" in s.exportar({"formato": "csv"}).decode("utf-8")
+    assert s.protocolo()["sexo"] == "M"
+    cmd(s, acao="definir_sexo", sexo=None)
+    assert cmd(s, acao="polar")["polar"]["automatico"] is None
