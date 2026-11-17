@@ -24,6 +24,7 @@ from pathlib import Path
 
 from .. import __version__
 from .polar import SEGMENTOS
+from .gated import escores_funcao
 from .sessao import PONTUADOS, ErroSessao, Sessao
 
 __all__ = ["processar_protocolo", "main"]
@@ -64,6 +65,17 @@ def linha_csv(nome: str, s: Sessao) -> dict:
         for seg in SEGMENTOS:
             linha[f"{e}_escore_{seg}"] = s.escores[e].get(seg)
             linha[f"{e}_captacao_{seg}"] = round(valores[seg], 1) if seg in valores else None
+    # gated: FE, volumes e escores de função (colunas sempre presentes, para o CSV consolidado)
+    for e in PONTUADOS:
+        res = s.funcao(e) if s._fonte_gated(e) is not None and e in s.eixos else None
+        linha[f"{e}_fe"] = round(res.fe, 1) if res else None
+        linha[f"{e}_vdf_ml"] = round(res.vdf_ml, 1) if res else None
+        linha[f"{e}_vsf_ml"] = round(res.vsf_ml, 1) if res else None
+        for tipo, sigla in (("motilidade", "SMS"), ("espessamento", "STS")):
+            soma = escores_funcao(s.escores_funcao[tipo][e], tipo)
+            linha[f"{e}_{sigla}"] = soma["soma"] if soma else None
+    tid = s.tid()
+    linha["TID"] = tid["tid"] if tid else None
     return linha
 
 

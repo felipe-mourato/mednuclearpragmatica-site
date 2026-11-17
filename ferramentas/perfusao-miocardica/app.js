@@ -42,6 +42,15 @@
   let pincel = 0;
   let rotulosPolar = 'escores';
   let resultados = null;
+  let abaMapa = 'perfusao'; // perfusao | motilidade | espessamento
+  const pincelFuncao = { motilidade: 0, espessamento: 0 };
+  let funcaoDados = null; // resposta do comando "funcao" (com a malha)
+  const cineGated = { timer: null, k: 0, n: 8, faixas: [] };
+  const malha = { yaw: 0, pitch: 0, quadro: 0, timer: null, tocando: true };
+  const FUNCAO = {
+    motilidade: { nome: 'Motilidade', max: 5, unidade: 'mm', teto: 10, legenda: '0 normal · 1 hipocinesia discreta · 2 moderada · 3 acentuada · 4 acinesia · 5 discinesia' },
+    espessamento: { nome: 'Espessamento', max: 3, unidade: '%', teto: 100, legenda: '0 normal · 1 redução discreta · 2 moderada/acentuada · 3 ausente' },
+  };
   const exibicao = new Map(); // chave -> {nivel, largura, invertido}
   const visores = new Map();
 
@@ -148,6 +157,8 @@
   function irPara(i) {
     if (!liberado(i)) return;
     pararCine();
+    pararCineGated();
+    pararMalha();
     if (i >= 2 && !estado.reconstruido) {
       passo = i;
       mostrarPasso();
@@ -183,7 +194,7 @@
     $('[data-validacao="0"]').textContent = estado?.arquivos.length ? v.arquivos || '' : '';
     $('[data-validacao="3"]').textContent = v.eixos || '';
     visores.clear();
-    [renderArquivos, renderQC, renderRecon, renderEixos, renderCortes, renderPasso6, renderLaudo][passo]();
+    [renderArquivos, renderQC, renderRecon, renderEixos, renderCortes, renderFuncao, renderMapas, renderLaudo][passo]();
   }
 
   function blocoAvisos(seletor, extras = []) {
@@ -737,14 +748,377 @@
     }
   }
 
-  // ----------------------------------------------------------- passo 6
-  function renderPasso6() {
-    // Os cortes ficam acima dos mapas e só são refeitos ao entrar no passo ou trocar a escala,
-    // não a cada clique de escore.
+  // ----------------------------------------------------- passo 6: função (gated)
+  function renderFuncao() {
+    const a = estado.antropometria || {};
+    $('[data-peso]').value = a.peso_kg ?? '';
+    $('[data-altura]').value = a.altura_cm ?? '';
+    $('[data-funcao]').innerHTML = '';
+    if (!estado.gated.length) $('[data-status-funcao]').textContent = 'Sem arquivos de gated: só a TID (imagens não sincronizadas) é calculada.';
+    else $('[data-status-funcao]').textContent = 'Calculando o gated: reconstrução de cada intervalo, bordas e volumes. Pode levar alguns segundos…';
+    $('[data-painel="5"]').classList.add('ocupado');
+    depoisDePintar(() => {
+      const r = cmd({ acao: 'funcao' });
+      $('[data-painel="5"]').classList.remove('ocupado');
+      if (!r.ok) { $('[data-status-funcao]').textContent = ''; avisar(r.erro); return; }
+      funcaoDados = r.funcao;
+      $('[data-status-funcao]').textContent = '';
+      montarFuncao();
+    });
+  }
+
+  function cartao(rotulo, valor, nota = '') {
+    return `<div class="cartao-escore"><span class="rotulo">${esc(rotulo)}</span><span class="valor">${valor}</span>${nota ? `<span class="nota">${nota}</span>` : ''}</div>`;
+  }
+
+  function curvaVolume(vols, ed, es) {
+    /* Curva de volume por intervalo, com o primeiro repetido no fim (como no QGS). ed, es: base 0. */
+    const v = [...vols, vols[0]];
+    const L = 300, A = 150, m = 34, n = v.length;
+    const vmax = Math.max(...v) * 1.12 || 1;
+    const x = (i) => m + (i * (L - m - 10)) / Math.max(n - 1, 1);
+    const y = (val) => A - 22 - (val / vmax) * (A - 36);
+    const pts = v.map((val, i) => `${x(i).toFixed(1)},${y(val).toFixed(1)}`).join(' ');
+    const marca = (i, classe, rot) => `<circle class="${classe}" cx="${x(i)}" cy="${y(v[i])}" r="4.5"/><text x="${x(i)}" y="${y(v[i]) - 9}" text-anchor="middle" class="rot-curva">${rot}</text>`;
+    const eixoX = v.map((_, i) => `<text x="${x(i)}" y="${A - 6}" text-anchor="middle" class="rot-eixo">${(i % (n - 1)) + 1}</text>`).join('');
+    const ticks = [0, 0.5, 1].map((f) => { const val = (vmax / 1.12) * f; return `<text x="${m - 5}" y="${y(val) + 3}" text-anchor="end" class="rot-eixo">${Math.round(val)}</text><line x1="${m}" x2="${L - 10}" y1="${y(val)}" y2="${y(val)}" class="grade"/>`; }).join('');
+    return `<svg class="curva-volume" viewBox="0 0 ${L} ${A}" role="img" aria-label="Curva de volume do VE por intervalo">${ticks}
+      <text x="4" y="12" class="rot-eixo">mL</text><polyline points="${pts}" class="linha"/>${marca(ed, 'vdf', 'VDF')}${marca(es, 'vsf', 'VSF')}${eixoX}
+      <text x="${(L + m) / 2}" y="${A}" text-anchor="middle" class="rot-eixo"></text></svg>`;
+  }
+
+  function montarFuncao() {
+    const f = funcaoDados;
+    const area = $('[data-funcao]');
+    const nomes = ['estresse', 'repouso'].filter((e) => f.estudos[e]);
+    let html = '';
+    if (f.tid) {
+      html += `<div class="cartoes-escore">${cartao('TID (estresse ÷ repouso)', num(f.tid.tid, 2), `cavidade ${num(f.tid.estresse_ml, 0)} mL × ${num(f.tid.repouso_ml, 0)} mL, imagens não sincronizadas${f.tid.de_gated.length ? ` (${esc(f.tid.de_gated.join(' e ').toLowerCase())}: soma do gated)` : ''}`)}
+        ${f.superficie_corporal ? cartao('Superfície corporal', `${num(f.superficie_corporal, 2)} m²`, 'Mosteller') : ''}</div>`;
+    }
+    if (!nomes.length) {
+      html += '<p class="nota">Sem gated com eixo: carregue o gated do estresse e do repouso (passo 1) para calcular FE, volumes, malha, motilidade e espessamento.</p>';
+      area.innerHTML = html;
+      return;
+    }
+    html += '<div class="funcao-estudos">';
+    for (const e of nomes) {
+      const d = f.estudos[e];
+      const ind = d.indices;
+      html += `<section class="funcao-estudo" data-funcao-estudo="${e}">
+        <h3 class="subtitulo">${esc(d.rotulo)}${d.de_soma ? ' <span class="nota">(perfusão pela soma do gated)</span>' : ''}</h3>
+        <div class="cartoes-escore">
+          ${cartao('FE', `${num(d.fe, 0)}%`)}
+          ${cartao('VDF', `${num(d.vdf_ml, 0)} mL`, ind ? `${num(ind.vdf_ml_m2, 0)} mL/m²` : `intervalo ${d.ed} de ${d.n_intervalos}`)}
+          ${cartao('VSF', `${num(d.vsf_ml, 0)} mL`, ind ? `${num(ind.vsf_ml_m2, 0)} mL/m²` : `intervalo ${d.es} de ${d.n_intervalos}`)}
+          ${cartao('Volume sistólico', `${num(d.vs_ml, 0)} mL`)}
+        </div>
+        ${curvaVolume(d.volumes_ml, d.ed - 1, d.es - 1)}
+        <div class="malhas">
+          <figure class="malha-fig"><canvas width="300" height="300" data-malha="${e}" data-modo="rede" aria-label="Rede do endocárdio na diástole final, ${esc(d.rotulo.toLowerCase())}"></canvas><figcaption>Diástole final: rede do endocárdio (e epicárdio, mais claro)</figcaption></figure>
+          <figure class="malha-fig"><canvas width="300" height="300" data-malha="${e}" data-modo="ciclo" aria-label="Movimento do endocárdio no ciclo, ${esc(d.rotulo.toLowerCase())}"></canvas><figcaption>Movimento até a sístole final: superfície do intervalo atual dentro da rede da diástole</figcaption></figure>
+        </div>
+        ${d.avisos.length ? `<div class="alerta" role="status"><ul>${d.avisos.map((x) => `<li>${esc(x)}</li>`).join('')}</ul></div>` : ''}
+      </section>`;
+    }
+    html += `</div>
+      <div class="controles-malha">
+        <button type="button" class="mnp-btn mnp-btn--pequeno" data-acao="malha-tocar" aria-pressed="${malha.tocando}">${malha.tocando ? 'Pausar' : 'Animar'}</button>
+        <label class="campo">Intervalo <input type="range" min="0" max="${Math.max(...nomes.map((e) => f.estudos[e].n_intervalos)) - 1}" step="1" value="${malha.quadro}" data-malha-quadro> <span data-malha-texto></span></label>
+        <span class="alternar" role="group" aria-label="Vista da malha">
+          <button type="button" data-vista="0,0">Anterior</button><button type="button" data-vista="-90,0">Lateral</button>
+          <button type="button" data-vista="180,0">Inferior</button><button type="button" data-vista="90,0">Septal</button>
+        </span>
+        <span class="nota">Arraste a malha para girar. Ápice para baixo.</span>
+      </div>`;
+    area.innerHTML = html;
+    desenharMalhas();
+    if (malha.tocando) tocarMalha();
+  }
+
+  // -------------------------------------------------------------- malha 3D
+  function corCss(nome, padrao) { return getComputedStyle(document.documentElement).getPropertyValue(nome).trim() || padrao; }
+
+  function projetar(p, centro, escala, vista, w, h) {
+    // LV: x lateral, y anterior, z da base para o ápice. Tela: x lateral à direita, ápice para baixo, observador anterior.
+    let sx = p[0] - centro[0], sy = p[2] - centro[2], d = p[1] - centro[1];
+    const cy = Math.cos(vista.yaw), syw = Math.sin(vista.yaw);
+    [sx, d] = [sx * cy + d * syw, -sx * syw + d * cy];
+    const cp = Math.cos(vista.pitch), sp = Math.sin(vista.pitch);
+    [sy, d] = [sy * cp - d * sp, sy * sp + d * cp];
+    return [w / 2 + sx * escala, h / 2 + sy * escala, d];
+  }
+
+  function desenharSuperficie(ctx, grade, centro, escala, vista, w, h, cor, preenchida, alfa = 1) {
+    const L = grade.length, A = grade[0].length;
+    const P = grade.map((linha) => linha.map((p) => projetar(p, centro, escala, vista, w, h)));
+    // ponta do ápice: média da primeira linha
+    const ponta3 = [0, 1, 2].map((k) => grade[0].reduce((s, p) => s + p[k], 0) / A);
+    const ponta = projetar(ponta3, centro, escala, vista, w, h);
+    if (preenchida) {
+      const faces = [];
+      for (let j = 0; j < A; j++) faces.push([ponta, P[0][j], P[0][(j + 1) % A]]);
+      for (let i = 0; i < L - 1; i++) for (let j = 0; j < A; j++) faces.push([P[i][j], P[i + 1][j], P[i + 1][(j + 1) % A], P[i][(j + 1) % A]]);
+      faces.forEach((f) => { f.prof = f.reduce((s, q) => s + q[2], 0) / f.length; });
+      faces.sort((a, b) => a.prof - b.prof);
+      for (const f of faces) {
+        const [a, b, c] = f;
+        const nz = (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
+        const area = Math.hypot((b[0] - a[0]), (b[1] - a[1])) * Math.hypot((c[0] - a[0]), (c[1] - a[1])) || 1;
+        const luz = 0.35 + 0.65 * Math.min(1, Math.abs(nz) / area);
+        ctx.fillStyle = `rgba(${Math.round(cor[0] * luz)},${Math.round(cor[1] * luz)},${Math.round(cor[2] * luz)},${alfa})`;
+        ctx.beginPath();
+        f.forEach((q, k) => (k ? ctx.lineTo(q[0], q[1]) : ctx.moveTo(q[0], q[1])));
+        ctx.closePath();
+        ctx.fill();
+      }
+      return;
+    }
+    ctx.strokeStyle = cor;
+    ctx.globalAlpha = alfa;
+    ctx.lineWidth = 0.8;
+    ctx.beginPath();
+    for (let i = 0; i < L; i++) { // anéis
+      P[i].forEach((q, j) => (j ? ctx.lineTo(q[0], q[1]) : ctx.moveTo(q[0], q[1])));
+      ctx.closePath();
+    }
+    for (let j = 0; j < A; j += 2) { // meridianos
+      ctx.moveTo(ponta[0], ponta[1]);
+      for (let i = 0; i < L; i++) ctx.lineTo(P[i][j][0], P[i][j][1]);
+    }
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+  }
+
+  function desenharMalha(canvas, m, quadro, modo, tinta = corCss('--ink', '#1b2a3a')) {
+    const ctx = canvas.getContext('2d');
+    const w = canvas.width, h = canvas.height;
+    ctx.clearRect(0, 0, w, h);
+    const ed = m.endo[m.ed];
+    const todos = m.epi_ed.flat();
+    const centro = [0, 1, 2].map((k) => todos.reduce((s, p) => s + p[k], 0) / todos.length);
+    const raio = Math.max(...todos.map((p) => Math.hypot(p[0] - centro[0], p[1] - centro[1], p[2] - centro[2])));
+    const escala = (0.46 * Math.min(w, h)) / (raio || 1);
+    const vista = { yaw: (malha.yaw * Math.PI) / 180, pitch: (malha.pitch * Math.PI) / 180 };
+    if (modo === 'rede') {
+      desenharSuperficie(ctx, m.epi_ed, centro, escala, vista, w, h, tinta, false, 0.25);
+      desenharSuperficie(ctx, ed, centro, escala, vista, w, h, tinta, false, 0.9);
+    } else {
+      const q = Math.min(quadro, m.endo.length - 1);
+      desenharSuperficie(ctx, m.endo[q], centro, escala, vista, w, h, [240, 122, 42], true);
+      desenharSuperficie(ctx, ed, centro, escala, vista, w, h, tinta, false, 0.45);
+    }
+  }
+
+  function desenharMalhas() {
+    if (!funcaoDados) return;
+    let texto = '';
+    for (const c of $$('canvas[data-malha]')) {
+      const d = funcaoDados.estudos[c.dataset.malha];
+      if (!d?.malha) continue;
+      const q = malha.quadro % d.malha.endo.length;
+      desenharMalha(c, d.malha, q, c.dataset.modo);
+      if (c.dataset.modo === 'ciclo') texto += `${texto ? ' · ' : ''}${d.rotulo}: intervalo ${q + 1}, ${num(d.malha.volumes_ml[q], 0)} mL`;
+    }
+    const rot = $('[data-malha-texto]');
+    if (rot) rot.textContent = texto;
+    const s = $('[data-malha-quadro]');
+    if (s) s.value = String(malha.quadro);
+    $$('[data-vista]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.vista === `${malha.yaw},${malha.pitch}`)));
+  }
+
+  function tocarMalha() {
+    pararMalha();
+    const n = Math.max(...Object.values(funcaoDados?.estudos || {}).map((d) => d.n_intervalos), 1);
+    malha.timer = setInterval(() => { malha.quadro = (malha.quadro + 1) % n; desenharMalhas(); }, 160);
+  }
+  function pararMalha() {
+    if (malha.timer) clearInterval(malha.timer);
+    malha.timer = null;
+  }
+
+  function imagensMalhaLaudo() {
+    /* Uma imagem por estudo: superfície na sístole final dentro da rede da diástole, vista anterior. */
+    if (!funcaoDados) return [];
+    const salvo = { yaw: malha.yaw, pitch: malha.pitch };
+    malha.yaw = 0; malha.pitch = 0;
+    const saida = [];
+    for (const d of Object.values(funcaoDados.estudos)) {
+      if (!d.malha) continue;
+      const c = document.createElement('canvas');
+      c.width = 360; c.height = 360;
+      const tmp = document.createElement('canvas'); tmp.width = 360; tmp.height = 360;
+      desenharMalha(tmp, d.malha, d.malha.es, 'ciclo', '#1b2a3a');
+      const ctx = c.getContext('2d');
+      ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, 360, 360);
+      ctx.drawImage(tmp, 0, 0);
+      saida.push({ rotulo: `${d.rotulo} · sístole final (superfície) dentro da diástole final (rede), vista anterior`, png: c.toDataURL('image/png') });
+    }
+    malha.yaw = salvo.yaw; malha.pitch = salvo.pitch;
+    return saida;
+  }
+
+  // ------------------------------------------- passo 7: mapas polares e escores
+  function renderMapas() {
     $$('[data-mapa]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.mapa === estado.mapa)));
+    const temGated = estado.gated.some((e) => estudoPorNome(e)?.eixo);
+    if (!temGated && abaMapa !== 'perfusao') abaMapa = 'perfusao';
+    $('[data-abas-mapa]').innerHTML = [['perfusao', 'Perfusão'], ['motilidade', 'Motilidade'], ['espessamento', 'Espessamento sistólico']]
+      .map(([k, rot]) => `<button type="button" role="tab" data-aba-mapa="${k}" aria-selected="${abaMapa === k}" ${k !== 'perfusao' && !temGated ? 'disabled title="Precisa do gated"' : ''}>${rot}</button>`).join('');
+    const instr = {
+      perfusao: 'Escolha o escore e clique nos segmentos do mapa (ou use as listas da tabela). Escala: 0 normal; 1 hipocaptação discreta; 2 moderada; 3 acentuada; 4 ausência de captação (SBC 2020; ASNC 2017). A pontuação é sua: a captação em % do máximo do VE ajuda a conferir, mas não há banco de normalidade.',
+      motilidade: 'Pontue a motilidade de cada segmento vendo o cine do gated (acima) e o mapa calculado. Escala (SBC 2020, Tabela 19): 0 normal; 1 hipocinesia discreta; 2 moderada; 3 acentuada; 4 acinesia; 5 discinesia. O mapa mostra o deslocamento do endocárdio da diástole para a sístole final, de 0 a 10 mm; sem banco de normalidade, e o septo costuma mover menos que a parede lateral.',
+      espessamento: 'Pontue o espessamento sistólico vendo o cine do gated (acima) e o mapa calculado. Escala (SBC 2020, Tabela 19): 0 normal; 1 redução discreta; 2 redução moderada ou acentuada; 3 ausência de espessamento. O mapa mostra o aumento relativo da espessura da diástole para a sístole final, de 0 a 100% (pelo aumento de contagem); o ápice costuma espessar mais que a base.',
+    };
+    $('[data-instrucao-mapa]').textContent = instr[abaMapa];
+    $('[data-titulo-cortes]').textContent = abaMapa === 'perfusao' ? 'Cortes de estresse e repouso para pontuar' : 'Cine do gated (estresse e repouso) para pontuar';
+    $('[data-rotulo-valores]').textContent = abaMapa === 'perfusao' ? 'Captação (%)' : abaMapa === 'motilidade' ? 'Valores (mm)' : 'Valores (%)';
     const info = cmd({ acao: 'cortes' }).cortes;
-    montarCortes($('[data-cortes-polar]'), estado.estudos.filter((e) => ['estresse', 'repouso'].includes(e.estudo)), info);
-    renderPolar();
+    const estudos = estado.estudos.filter((e) => ['estresse', 'repouso'].includes(e.estudo));
+    pararCineGated();
+    if (abaMapa === 'perfusao') {
+      $('[data-cine-gated]').hidden = true;
+      montarCortes($('[data-cortes-polar]'), estudos, info);
+      renderPolar();
+    } else {
+      $('[data-cine-gated]').hidden = false;
+      montarCortesGated($('[data-cortes-polar]'), estudos.filter((e) => estado.gated.includes(e.estudo)), info);
+      renderPolarFuncao();
+    }
+  }
+
+  function montarCortesGated(area, estudos, info) {
+    /* Cine do gated: uma pilha de faixas por estudo e tipo, uma por intervalo; mostra a do intervalo atual. */
+    area.innerHTML = '';
+    cineGated.faixas = [];
+    const fd = funcaoDados?.estudos || {};
+    cineGated.n = Math.max(1, ...estudos.map((e) => fd[e.estudo]?.n_intervalos || 8));
+    for (const [tipo, nome, ordem] of TIPOS_CORTE) {
+      const bloco = document.createElement('section');
+      bloco.className = 'bloco-cortes';
+      bloco.innerHTML = `<h3 class="subtitulo">${esc(nome)} <span class="nota">(${esc(ordem)})</span></h3>`;
+      for (const e of estudos) {
+        const t = info[e.estudo]?.tipos[tipo];
+        if (!t) continue;
+        const n = fd[e.estudo]?.n_intervalos || 8;
+        const linha = document.createElement('div');
+        linha.className = 'faixa';
+        linha.innerHTML = `<span class="faixa-rotulo">${esc(e.rotulo)}</span><div class="faixa-rolagem faixa-cine"></div>`;
+        const caixa = $('.faixa-rolagem', linha);
+        const quadros = [];
+        for (let k = 0; k < n; k++) {
+          const c = imagemColorida({ fonte: 'faixa_gated', estudo: e.estudo, tipo, intervalo: k }, t.largura, t.altura, 'faixa-img');
+          c.hidden = k !== cineGated.k % n;
+          caixa.appendChild(c);
+          quadros.push(c);
+        }
+        cineGated.faixas.push(quadros);
+        bloco.appendChild(linha);
+      }
+      area.appendChild(bloco);
+    }
+    const s = $('[data-intervalo-gated]');
+    s.max = String(cineGated.n - 1);
+    mostrarQuadroGated();
+    tocarCineGated();
+  }
+  function mostrarQuadroGated() {
+    for (const quadros of cineGated.faixas) quadros.forEach((c, k) => { c.hidden = k !== cineGated.k % quadros.length; });
+    $('[data-intervalo-gated]').value = String(cineGated.k);
+    $('[data-intervalo-gated-texto]').textContent = `${cineGated.k + 1} de ${cineGated.n}`;
+  }
+  function tocarCineGated() {
+    pararCineGated();
+    cineGated.timer = setInterval(() => { cineGated.k = (cineGated.k + 1) % cineGated.n; mostrarQuadroGated(); }, 150);
+    const b = $('[data-acao="cine-gated"]');
+    b.textContent = 'Pausar'; b.setAttribute('aria-pressed', 'true');
+  }
+  function pararCineGated() {
+    if (cineGated.timer) clearInterval(cineGated.timer);
+    cineGated.timer = null;
+    const b = $('[data-acao="cine-gated"]');
+    if (b) { b.textContent = 'Animar'; b.setAttribute('aria-pressed', 'false'); }
+  }
+
+  function pincelHtml(max, atual, legenda) {
+    return [...Array(max + 1).keys(), null].map((v) => `<button type="button" role="radio" class="chip-escore ${v === null ? 'apagar' : `e${Math.min(4, Math.round((v * 4) / max))}`}" data-pincel-valor="${v === null ? '' : v}" aria-checked="${atual === v}">${v === null ? 'Apagar' : v}</button>`).join('')
+      + `<span class="nota pincel-legenda">${esc(legenda)}</span>`;
+  }
+
+  function renderPolarFuncao() {
+    const tipo = abaMapa;
+    const cfg = FUNCAO[tipo];
+    $('[data-pincel]').innerHTML = pincelHtml(cfg.max, pincelFuncao[tipo], cfg.legenda);
+    $$('[data-rotulos]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.rotulos === rotulosPolar)));
+    const r = cmd({ acao: 'funcao', com_malha: false });
+    if (!r.ok) { $('[data-polares]').innerHTML = `<p class="erro">${esc(r.erro)}</p>`; return; }
+    const f = r.funcao;
+    const p = cmd({ acao: 'polar' }).polar;
+    const area = $('[data-polares]');
+    area.innerHTML = '';
+    for (const nome of ['estresse', 'repouso']) {
+      const d = f.estudos[nome];
+      if (!d) continue;
+      const mp = d.mapas[tipo];
+      const fig = document.createElement('figure');
+      fig.className = 'polar';
+      fig.innerHTML = `<figcaption>${esc(d.rotulo)} · ${esc(cfg.nome.toLowerCase())}</figcaption><div class="polar-visor"></div>
+        <div class="legenda-escala"><span>0 ${cfg.unidade}</span><canvas width="120" height="8" data-barra-cor></canvas><span>${cfg.teto} ${cfg.unidade}</span></div>
+        <div class="linha-acoes"><button type="button" class="mnp-btn mnp-btn--pequeno" data-todos-funcao="${nome}">Todos normais (0)</button>
+        ${nome === 'repouso' && f.estudos.estresse ? '<button type="button" class="mnp-btn mnp-btn--pequeno" data-copiar-funcao="estresse:repouso">Copiar do estresse</button>' : ''}</div>`;
+      const visor = $('.polar-visor', fig);
+      visor.appendChild(imagemColorida({ fonte: 'polar_funcao', estudo: nome, tipo }, f.lado, f.lado, 'polar-img'));
+      const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      svg.setAttribute('viewBox', `0 0 ${f.lado} ${f.lado}`);
+      svg.innerHTML = mp.segmentos.map((g) => {
+        const s = String(g.segmento);
+        const escore = mp.escores[s];
+        const valor = num(mp.valores[s], tipo === 'motilidade' ? 1 : 0);
+        const texto = rotulosPolar === 'escores' ? (escore === null || escore === undefined ? '–' : escore) : valor;
+        return `<g class="seg" data-segmento="${s}" data-estudo="${nome}" data-tipo-funcao="${tipo}" tabindex="0" role="button" aria-label="${esc(p.nomes[s])}: escore ${escore ?? 'não pontuado'}, ${valor} ${cfg.unidade}">
+          <path d="${g.caminho}"/><text x="${g.rotulo[0]}" y="${g.rotulo[1] + 5}" text-anchor="middle">${esc(texto)}</text><title>${s}. ${esc(p.nomes[s])} · ${valor} ${cfg.unidade}</title></g>`;
+      }).join('');
+      visor.appendChild(svg);
+      area.appendChild(fig);
+      pintarBarra($('[data-barra-cor]', fig));
+    }
+    // resumo e tabela
+    const somas = ['estresse', 'repouso'].filter((n) => f.estudos[n]).map((n) => {
+      const s = f.estudos[n].somas[tipo === 'motilidade' ? 'sms' : 'sts'];
+      return cartao(`${tipo === 'motilidade' ? 'SMS' : 'STS'} (${f.estudos[n].rotulo.toLowerCase()})`, s ? String(s.soma) : '—', s ? `${num(s.percentual, 1)}% do máximo` : 'pontue os 17 segmentos');
+    }).join('');
+    $('[data-resumo]').innerHTML = `<div class="cartoes-escore">${somas}</div>`;
+    const opcoes = (v) => ['', ...Array(cfg.max + 1).keys()].map((x) => `<option value="${x}" ${String(v ?? '') === String(x) ? 'selected' : ''}>${x === '' ? '–' : x}</option>`).join('');
+    const est = ['estresse', 'repouso'].filter((n) => f.estudos[n]);
+    $('[data-tabela-segmentos]').innerHTML = `
+      <thead><tr><th scope="col">Segmento</th>${est.map((n) => `<th scope="col">Escore ${esc(f.estudos[n].rotulo.toLowerCase())}</th><th scope="col">${cfg.nome} ${esc(f.estudos[n].rotulo.toLowerCase())}</th>`).join('')}</tr></thead>
+      <tbody>${Object.keys(p.nomes).map((s) => `<tr><th scope="row">${s}. ${esc(p.nomes[s])}</th>${est.map((n) => {
+        const mp = f.estudos[n].mapas[tipo];
+        return `<td><select data-escore-funcao="${tipo}:${n}:${s}" aria-label="Escore de ${cfg.nome.toLowerCase()} do ${esc(f.estudos[n].rotulo.toLowerCase())}, segmento ${s}">${opcoes(mp.escores[s])}</select></td><td>${num(mp.valores[s], tipo === 'motilidade' ? 1 : 0)} ${cfg.unidade}</td>`;
+      }).join('')}</tr>`).join('')}</tbody>`;
+    $('[data-avisos-5]').innerHTML = '';
+  }
+
+  function pintarBarra(c) {
+    /* Barra da escala de cor (mesmos pontos das tabelas do núcleo, figuras.py). */
+    if (!c) return;
+    const ctx = c.getContext('2d');
+    const tabelas = {
+      quente: [[0, 0, 0, 0], [0.3, 150, 20, 10], [0.55, 230, 90, 20], [0.8, 250, 200, 60], [1, 255, 255, 255]],
+      fria: [[0, 0, 0, 0], [0.15, 10, 10, 120], [0.32, 60, 40, 200], [0.48, 150, 50, 190], [0.62, 230, 70, 140], [0.76, 250, 140, 60], [0.9, 255, 225, 90], [1, 255, 255, 255]],
+      cinza: [[0, 0, 0, 0], [1, 255, 255, 255]],
+      invertida: [[0, 255, 255, 255], [1, 0, 0, 0]],
+    };
+    const g = ctx.createLinearGradient(0, 0, 120, 0);
+    for (const [pos, r, gr, bl] of tabelas[estado.mapa] || tabelas.cinza) g.addColorStop(pos, `rgb(${r},${gr},${bl})`);
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, 120, 8);
+  }
+
+  function pontuarFuncao(tipo, estudo, segmento, valor) {
+    const r = cmd({ acao: 'pontuar_funcao', tipo, estudo, segmento: Number(segmento), escore: valor === '' || valor === null ? null : Number(valor) });
+    if (!r.ok) avisar(r.erro);
+    renderPolarFuncao();
   }
 
   function renderPolar() {
@@ -806,8 +1180,12 @@
     renderPolar();
   }
 
-  // ----------------------------------------------------------- passo 7
+  // ----------------------------------------------------------- passo 8
   function renderLaudo() {
+    if (estado.gated.length && !Object.values(funcaoDados?.estudos || {}).some((d) => d.malha)) {
+      const f = cmd({ acao: 'funcao' });
+      if (f.ok) funcaoDados = f.funcao;
+    }
     const r = cmd({ acao: 'resultados' });
     resultados = r.ok ? r : null;
     $('[data-tabelas-laudo]').innerHTML = resultados ? resultados.tabelas_html : `<p class="erro">${esc(r.erro)}</p>`;
@@ -816,7 +1194,7 @@
   }
 
   function atualizarLaudo() {
-    const r = cmd({ acao: 'laudo', paciente: $('[data-paciente]').value, data_exame: $('[data-data-exame]').value, versoes_extra: { pyodide: PYODIDE_VERSAO } });
+    const r = cmd({ acao: 'laudo', paciente: $('[data-paciente]').value, data_exame: $('[data-data-exame]').value, versoes_extra: { pyodide: PYODIDE_VERSAO }, malhas: imagensMalhaLaudo() });
     $('[data-laudo]').innerHTML = r.ok ? r.html : `<p class="erro">${esc(r.erro)}</p>`;
     return r;
   }
@@ -876,7 +1254,11 @@
       const b = e.target.closest('button, [data-acao], g.seg');
       if (!b) { if (!e.target.closest('.menu-contexto')) fecharMenu(); return; }
       const d = b.dataset;
-      if (b.matches('g.seg')) { pontuar(d.estudo, d.segmento, pincel); return; }
+      if (b.matches('g.seg')) {
+        if (d.tipoFuncao) pontuarFuncao(d.tipoFuncao, d.estudo, d.segmento, pincelFuncao[d.tipoFuncao]);
+        else pontuar(d.estudo, d.segmento, pincel);
+        return;
+      }
       if (d.passo !== undefined) irPara(Number(d.passo));
       else if (d.ir !== undefined) irPara(Number(d.ir));
       else if (d.acao === 'recarregar') location.reload();
@@ -915,8 +1297,20 @@
         if (!r.ok) avisar(r.erro);
         render();
       } else if (d.mapa) { cmd({ acao: 'definir_mapa', mapa: d.mapa }); render(); }
-      else if (d.pincelValor !== undefined) { pincel = d.pincelValor === '' ? null : Number(d.pincelValor); renderPolar(); }
-      else if (d.rotulos) { rotulosPolar = d.rotulos; renderPolar(); }
+      else if (d.pincelValor !== undefined) {
+        const v = d.pincelValor === '' ? null : Number(d.pincelValor);
+        if (abaMapa === 'perfusao') { pincel = v; renderPolar(); } else { pincelFuncao[abaMapa] = v; renderPolarFuncao(); }
+      } else if (d.rotulos) { rotulosPolar = d.rotulos; if (abaMapa === 'perfusao') renderPolar(); else renderPolarFuncao(); }
+      else if (d.abaMapa) { abaMapa = d.abaMapa; renderMapas(); }
+      else if (d.todosFuncao) { cmd({ acao: 'pontuar_funcao_todos', tipo: abaMapa, estudo: d.todosFuncao, escore: 0 }); renderPolarFuncao(); }
+      else if (d.copiarFuncao) { const [de, para] = d.copiarFuncao.split(':'); cmd({ acao: 'copiar_escores_funcao', tipo: abaMapa, de, para }); renderPolarFuncao(); }
+      else if (d.acao === 'cine-gated') { if (cineGated.timer) pararCineGated(); else tocarCineGated(); }
+      else if (d.acao === 'malha-tocar') {
+        malha.tocando = !malha.timer;
+        if (malha.tocando) tocarMalha(); else pararMalha();
+        b.textContent = malha.tocando ? 'Pausar' : 'Animar';
+        b.setAttribute('aria-pressed', String(malha.tocando));
+      } else if (d.vista) { [malha.yaw, malha.pitch] = d.vista.split(',').map(Number); desenharMalhas(); }
       else if (d.todos) { cmd({ acao: 'pontuar_todos', estudo: d.todos, escore: 0 }); renderPolar(); }
       else if (d.copiarEscores) { const [de, para] = d.copiarEscores.split(':'); cmd({ acao: 'copiar_escores', de, para }); renderPolar(); }
       else if (d.exportar) baixar(d.exportar);
@@ -932,10 +1326,33 @@
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') fecharMenu();
       const g = e.target.closest?.('g.seg');
-      if (g && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); pontuar(g.dataset.estudo, g.dataset.segmento, pincel); }
-      if (g && /^[0-4]$/.test(e.key)) { e.preventDefault(); pontuar(g.dataset.estudo, g.dataset.segmento, Number(e.key)); }
+      if (g && (e.key === 'Enter' || e.key === ' ')) {
+        e.preventDefault();
+        if (g.dataset.tipoFuncao) pontuarFuncao(g.dataset.tipoFuncao, g.dataset.estudo, g.dataset.segmento, pincelFuncao[g.dataset.tipoFuncao]);
+        else pontuar(g.dataset.estudo, g.dataset.segmento, pincel);
+      }
+      if (g && (e.key === 'Enter' || e.key === ' ') && g.dataset.tipoFuncao) return;
+      if (g && !g.dataset.tipoFuncao && /^[0-4]$/.test(e.key)) { e.preventDefault(); pontuar(g.dataset.estudo, g.dataset.segmento, Number(e.key)); }
+      if (g && g.dataset.tipoFuncao && /^[0-5]$/.test(e.key) && Number(e.key) <= FUNCAO[g.dataset.tipoFuncao].max) {
+        e.preventDefault(); pontuarFuncao(g.dataset.tipoFuncao, g.dataset.estudo, g.dataset.segmento, Number(e.key));
+      }
     });
     window.addEventListener('scroll', fecharMenu, { passive: true });
+
+    let giro = null;
+    document.addEventListener('pointerdown', (e) => {
+      const c = e.target.closest?.('canvas[data-malha]');
+      if (!c) return;
+      giro = { x: e.clientX, y: e.clientY, yaw: malha.yaw, pitch: malha.pitch };
+      c.setPointerCapture(e.pointerId);
+    });
+    document.addEventListener('pointermove', (e) => {
+      if (!giro) return;
+      malha.yaw = Math.round(giro.yaw + (e.clientX - giro.x) * 0.6);
+      malha.pitch = Math.round(Math.max(-90, Math.min(90, giro.pitch + (e.clientY - giro.y) * 0.6)));
+      desenharMalhas();
+    });
+    document.addEventListener('pointerup', () => { giro = null; });
 
     document.addEventListener('input', (e) => {
       const t = e.target;
@@ -952,6 +1369,8 @@
         const rot = $(`[data-ct="${est}"]`);
         if (rot) rot.textContent = `corte ${Number(t.value) + 1} de ${Number(t.max) + 1}`;
       } else if (t.matches('[data-corte], [data-ordem]')) atualizarUnidades();
+      else if (t.matches('[data-intervalo-gated]')) { pararCineGated(); cineGated.k = Number(t.value); mostrarQuadroGated(); }
+      else if (t.matches('[data-malha-quadro]')) { pararMalha(); malha.tocando = false; malha.quadro = Number(t.value); desenharMalhas(); const bt = $('[data-acao="malha-tocar"]'); if (bt) { bt.textContent = 'Animar'; bt.setAttribute('aria-pressed', 'false'); } }
     });
 
     document.addEventListener('change', (e) => {
@@ -970,6 +1389,16 @@
       } else if (t.dataset.escore) {
         const [estudo, seg] = t.dataset.escore.split(':');
         pontuar(estudo, seg, t.value);
+      } else if (t.dataset.escoreFuncao) {
+        const [tipo, estudo, seg] = t.dataset.escoreFuncao.split(':');
+        pontuarFuncao(tipo, estudo, seg, t.value);
+      } else if (t.matches('[data-peso], [data-altura]')) {
+        const peso = $('[data-peso]').value, altura = $('[data-altura]').value;
+        const r = cmd({ acao: 'definir_antropometria', peso: peso === '' ? null : Number(peso), altura: altura === '' ? null : Number(altura) });
+        if (!r.ok) { avisar(r.erro); return; }
+        avisar('');
+        const f = cmd({ acao: 'funcao' });
+        if (f.ok) { funcaoDados = f.funcao; montarFuncao(); }
       } else if (t.matches('[data-paciente], [data-data-exame]')) atualizarLaudo();
     });
 

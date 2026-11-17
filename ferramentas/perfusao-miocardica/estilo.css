@@ -432,3 +432,36 @@ table.resultados tbody tr:last-child > * { border-bottom: 0; }
 .cortes-pontuar .controles-cortes { margin: 8px 0 4px; }
 .cortes-pontuar .bloco-cortes .subtitulo { margin: 8px 0 4px; font-size: .9rem; }
 .cortes-pontuar .faixa-rolagem canvas { height: 72px; }
+
+/* passo 6: função (gated) */
+.antropometria { display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: flex-end; margin: 0 0 12px; }
+.antropometria input { width: 7em; }
+.antropometria .nota { flex: 1 1 260px; margin: 0; }
+.funcao-estudos { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr)); gap: 18px; margin: 14px 0; }
+.funcao-estudo { background: var(--surface-raised); border: 1px solid var(--line); border-radius: var(--radius-md); padding: 12px 14px; min-width: 0; }
+.funcao-estudo .subtitulo { margin-top: 0; }
+.curva-volume { width: 100%; max-width: 360px; height: auto; display: block; margin: 8px 0; }
+.curva-volume .linha { fill: none; stroke: var(--ink); stroke-width: 1.6; }
+.curva-volume .grade { stroke: var(--line); stroke-width: .6; }
+.curva-volume .vdf { fill: var(--esp-cardio); }
+.curva-volume .vsf { fill: var(--esp-endo); }
+.curva-volume .rot-eixo, .curva-volume .rot-curva { font-family: var(--font-mono); font-size: 9px; fill: var(--ink-muted); }
+.curva-volume .rot-curva { fill: var(--ink); }
+.malhas { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.malha-fig { margin: 0; }
+.malha-fig canvas { width: 100%; max-width: 300px; aspect-ratio: 1; display: block; margin: 0 auto; background: var(--surface-sunken); border-radius: var(--radius-sm); cursor: grab; touch-action: none; }
+.malha-fig canvas:active { cursor: grabbing; }
+.malha-fig figcaption { font-size: .8125rem; color: var(--ink-muted); margin-top: 4px; }
+.controles-malha { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; margin: 4px 0 16px; }
+.controles-malha .nota { margin: 0; }
+
+/* passo 7: abas e cine do gated */
+.abas-mapa button:disabled { opacity: .5; cursor: not-allowed; }
+.cine-gated { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; margin: 8px 0; }
+.legenda-escala { display: flex; align-items: center; gap: 6px; justify-content: center; font-family: var(--font-mono); font-size: .75rem; color: var(--ink-muted); margin: 6px 0; }
+.legenda-escala canvas { width: 120px; height: 8px; border: 1px solid var(--line); }
+@media (max-width: 520px) { .malhas { grid-template-columns: 1fr; } }
+.laudo-curva-fig, .laudo-malha { margin: 0; }
+.laudo-curva-fig figcaption, .laudo-malha figcaption { font-size: .8125rem; color: var(--ink-muted); max-width: 260px; }
+.laudo-curva text { fill: #333; font-family: var(--font-mono); }
+.laudo-tid { margin: 8px 0; }

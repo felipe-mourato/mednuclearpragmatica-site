@@ -47,6 +47,6 @@
 
 - title: "Cintilografia de perfusão miocárdica"
   exame: "⁹⁹ᵐTc-MIBI ou tetrofosmin, SPECT"
-  description: "Das projeções ao laudo: controle de qualidade (cine, sinograma, linograma e gated), reconstrução por FBP com Butterworth, eixos do VE, cortes de estresse e repouso, mapa polar em 17 segmentos e escores SSS, SRS e SDS."
+  description: "Das projeções ao laudo: controle de qualidade, reconstrução por FBP com Butterworth, eixos do VE, cortes de estresse e repouso, mapa polar em 17 segmentos e escores SSS, SRS e SDS. No gated: FE, volumes, TID, malha do VE, motilidade e espessamento."
   versao: "0.4.0"
   endereco: "/ferramentas/perfusao-miocardica/"

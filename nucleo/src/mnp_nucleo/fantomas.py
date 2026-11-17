@@ -521,22 +521,82 @@ def _base_ve(a):
     return w, np.cross(w, a)
 
 
-def _pontos_ve(centro, a, defeito: dict | None, fator_raio: float = 1.0, passo: float = 2.0):
-    """Miocárdio em casca de elipsoide truncada (base a 20 mm do centro), atividade 1 (ou menor no defeito).
+def volume_elipsoide_truncado(L: float, R: float, s_base: float) -> float:
+    """Volume (mm³) de {(s/L)² + (ρ/R)² ≤ 1, s ≥ s_base}: π R² [(L − s_b) − (L³ − s_b³)/(3L²)]."""
+    s_b = max(float(s_base), -float(L))
+    return float(np.pi * R**2 * ((L - s_b) - (L**3 - s_b**3) / (3.0 * L**2)))
 
-    Coordenadas locais: s ao longo de a (do centro), ρ radial. Externo:
-    (s/45)² + (ρ/(27f))² ≤ 1; interno: (s/36)² + (ρ/(17f))² ≥ 1; s ≥ −20.
+
+@dataclass(frozen=True)
+class GeometriaVE:
+    """Geometria do VE sintético num instante (mm, coordenadas locais a partir do centro).
+
+    Endocárdio: (s/L)² + (ρ/R)² = 1; epicárdio: (s/Le)² + (ρ/Re)² = 1;
+    plano valvar em s = s_base (s cresce para o ápice).
+    """
+
+    L: float
+    R: float
+    Le: float
+    Re: float
+    s_base: float
+
+    @property
+    def cavidade_ml(self) -> float:
+        return volume_elipsoide_truncado(self.L, self.R, self.s_base) / 1000.0
+
+    @property
+    def miocardio_ml(self) -> float:
+        return volume_elipsoide_truncado(self.Le, self.Re, self.s_base) / 1000.0 - self.cavidade_ml
+
+
+#: Diástole final do VE sintético: cavidade de ~71 mL, parede de ~9 mm.
+GEOMETRIA_DIASTOLE = GeometriaVE(L=40.0, R=22.0, Le=50.0, Re=31.0, s_base=-22.0)
+#: Contração ao longo de 8 intervalos (0 = diástole final, 1 = sístole final).
+CONTRACAO_8 = (0.0, 0.45, 0.9, 1.0, 0.75, 0.4, 0.15, 0.02)
+
+
+def geometria_no_ciclo(g: float, dilatacao: float = 1.0) -> GeometriaVE:
+    """Geometria na fração de contração ``g`` (0–1), com massa miocárdica constante.
+
+    Endocárdio: raio −30% e semieixo longo −12% na sístole final; a base
+    desce 8 mm para o ápice; o ápice epicárdico recua 3 mm. O raio
+    epicárdico sai da conservação do volume miocárdico (o da diástole
+    final). ``dilatacao`` (estresse com dilatação isquêmica transitória)
+    afasta endo e epicárdio do centro pela mesma distância (o raio
+    endocárdico da diástole cresce na proporção ``dilatacao``), sem mudar
+    a espessura da parede.
+    """
+    d = GEOMETRIA_DIASTOLE
+    L = d.L * (1.0 - 0.12 * g)
+    R = d.R * (1.0 - 0.30 * g)
+    s_b = d.s_base + 8.0 * g
+    Le = d.Le - 3.0 * g
+    v_mio = d.miocardio_ml * 1000.0
+    v_cav = volume_elipsoide_truncado(L, R, s_b)
+    unit = volume_elipsoide_truncado(Le, 1.0, s_b)
+    Re = float(np.sqrt((v_mio + v_cav) / unit))
+    dr = (dilatacao - 1.0) * d.R
+    dl = (dilatacao - 1.0) * d.L
+    return GeometriaVE(L=L + dl, R=R + dr, Le=Le + dl, Re=Re + dr, s_base=s_b)
+
+
+def _pontos_ve(centro, a, defeito: dict | None, geo: GeometriaVE = GEOMETRIA_DIASTOLE, passo: float = 2.0):
+    """Miocárdio entre os dois elipsoides de ``geo``, acima do plano valvar; atividade 1 por mm³.
+
     Defeito: fator de atividade nos pontos com azimute (0° = lateral,
     90° = anterior) entre ``az`` e s < ``s_max``.
     """
     w, h = _base_ve(a)
-    g = np.arange(-50, 50.01, passo)
-    s, u, v = np.meshgrid(g, g, g, indexing="ij")
+    lim = geo.Le + 4.0
+    gs = np.arange(-lim, lim + 0.01, passo)
+    gr = np.arange(-(geo.Re + 4.0), geo.Re + 4.01, passo)
+    s, u, v = np.meshgrid(gs, gr, gr, indexing="ij")
     s, u, v = s.ravel(), u.ravel(), v.ravel()
     rho = np.hypot(u, v)
-    ext = (s / 45.0) ** 2 + (rho / (27.0 * fator_raio)) ** 2 <= 1.0
-    inte = (s / 36.0) ** 2 + (rho / (17.0 * fator_raio)) ** 2 >= 1.0
-    m = ext & inte & (s >= -20.0)
+    ext = (s / geo.Le) ** 2 + (rho / geo.Re) ** 2 <= 1.0
+    inte = (s / geo.L) ** 2 + (rho / geo.R) ** 2 >= 1.0
+    m = ext & inte & (s >= geo.s_base)
     s, u, v = s[m], u[m], v[m]
     pesos = np.ones(s.size)
     if defeito:
@@ -558,11 +618,13 @@ def _elipsoide(centro, raios, atividade, passo):
 
 @dataclass
 class FantomaPerfusao:
-    """Exame de perfusão sintético: projeções DICOM NM e o eixo verdadeiro do VE.
+    """Exame de perfusão sintético: projeções DICOM NM, o eixo e as medidas verdadeiras do VE.
 
     ``eixo``: base e ápice verdadeiros (mm, x esquerda, y trás, z cabeça).
     ``defeito``: segmentos com captação reduzida no estresse (lateral:
-    5, 6, 11 e 12, a 50%); o repouso é normal.
+    5, 6, 11 e 12, a 50%); o repouso é normal. ``verdade``: por estudo
+    (``estresse``, ``repouso``), volumes da cavidade em cada intervalo (mL),
+    VDF, VSF, FE (%) e o volume médio no ciclo (base da TID verdadeira).
     """
 
     arquivos: dict[str, bytes]
@@ -570,18 +632,27 @@ class FantomaPerfusao:
     segmentos_defeito: tuple
     fator_defeito: float
     descricao: str
+    verdade: dict
+
+
+#: Dilatação do VE no estresse (TID verdadeira ≈ 1,15).
+DILATACAO_ESTRESSE = 1.05
 
 
 def fantoma_perfusao(semente: int = 7, ruido: bool = True, contagens_estresse: float = 6.0e6) -> FantomaPerfusao:
-    """Gera estresse, repouso e os dois gated (8 intervalos, com arritmia no estresse).
+    """Gera estresse, repouso e os dois gated (8 intervalos, VE batendo, arritmia no estresse).
 
     VE com o ápice para a esquerda, para a frente e para baixo
-    (a ∝ (1; −0,7; −0,5)), centro da cavidade em (45; −25; 10) mm. Defeito de
-    estresse na parede lateral (azimute −60° a 60°, das porções basal e
-    média): 50% da atividade. Fígado à direita e um foco intestinal intenso
-    abaixo do coração, como nos exames reais; fundo corporal baixo. O
-    estresse sai comprimido em JPEG sem perdas (como na Siemens); os demais
-    sem compressão. Sem atenuação. Ruído de Poisson com semente fixa.
+    (a ∝ (1; −0,7; −0,5)), centro da cavidade em (45; −25; 10) mm.
+    Geometria em ``geometria_no_ciclo``: cavidade de ~71 mL na diástole
+    final e ~27 mL na sístole final do repouso (FE ≈ 62%), massa constante,
+    descida da base. Estresse com o VE dilatado (raio endocárdico da
+    diástole 5% maior, parede com a mesma espessura). Defeito de estresse na parede lateral
+    (azimute −60° a 60°, porções basal e média): 50% da atividade. As
+    aquisições não sincronizadas são a média dos 8 instantes. Fígado à
+    direita, foco intestinal intenso abaixo do coração e fundo corporal
+    baixo. O estresse sai comprimido em JPEG sem perdas (como na Siemens);
+    os demais sem compressão. Sem atenuação. Ruído de Poisson com semente fixa.
     """
     rng = np.random.default_rng(semente)
     g = GEOMETRIA_PADRAO
@@ -597,25 +668,32 @@ def fantoma_perfusao(semente: int = 7, ruido: bool = True, contagens_estresse: f
     zx, zy, zz = np.meshgrid(corpo_g, np.arange(-110, 110.1, 12.0), np.arange(-180, 180.1, 12.0), indexing="ij")
     mcorpo = (zx / 160.0) ** 2 + (zy / 115.0) ** 2 <= 1.0
     corpo = (np.stack([zx[mcorpo], zy[mcorpo], zz[mcorpo]], axis=1), np.full(int(mcorpo.sum()), 0.03 * 12.0**3))
+    fundo = projetar_pontos(np.concatenate([figado[0], foco[0], corpo[0]]), np.concatenate([figado[1], foco[1], corpo[1]]),
+                            angulos, g["pixel_mm"], g["matriz"], z0)
 
-    def projetar(com_defeito: bool, fator_raio: float = 1.0):
-        pv, wv = _pontos_ve(centro, a, defeito if com_defeito else None, fator_raio)
-        pts = np.concatenate([pv, figado[0], foco[0], corpo[0]])
-        ws = np.concatenate([wv, figado[1], foco[1], corpo[1]])
-        return projetar_pontos(pts, ws, angulos, g["pixel_mm"], g["matriz"], z0)
+    def ve(com_defeito: bool, geo: GeometriaVE):
+        pv, wv = _pontos_ve(centro, a, defeito if com_defeito else None, geo)
+        return projetar_pontos(pv, wv, angulos, g["pixel_mm"], g["matriz"], z0)
 
-    est = projetar(True)
-    rep = projetar(False)
+    verdade = {}
+    gated = {}
+    for estudo, com_defeito, dil in (("estresse", True, DILATACAO_ESTRESSE), ("repouso", False, 1.0)):
+        geos = [geometria_no_ciclo(c, dil) for c in CONTRACAO_8]
+        gated[estudo] = np.stack([ve(com_defeito, ge) + fundo for ge in geos])
+        vols = [ge.cavidade_ml for ge in geos]
+        verdade[estudo] = {"volumes_ml": vols, "vdf_ml": max(vols), "vsf_ml": min(vols),
+                           "fe": 100.0 * (max(vols) - min(vols)) / max(vols), "volume_medio_ml": float(np.mean(vols)),
+                           "geometrias": geos}
+    verdade["tid"] = verdade["estresse"]["volume_medio_ml"] / verdade["repouso"]["volume_medio_ml"]
+    est = gated["estresse"].mean(axis=0)
+    rep = gated["repouso"].mean(axis=0)
     est *= contagens_estresse / est.sum()
     rep *= 0.5 * contagens_estresse / rep.sum()
-    # gated: 8 intervalos, o VE contrai (raio menor na sístole); estresse com arritmia (últimos intervalos com menos contagens)
-    fatores_raio = [1.0, 0.95, 0.88, 0.84, 0.86, 0.92, 0.97, 1.0]
+    # gated: estresse com arritmia (últimos intervalos com menos contagens)
     peso_est = np.array([1, 1, 1, 1, 1, 1, 0.9, 0.6])
     peso_rep = np.ones(8)
-    gat_est = np.stack([projetar(True, f) for f in fatores_raio])
-    gat_rep = np.stack([projetar(False, f) for f in fatores_raio])
-    gat_est *= (contagens_estresse / 8.0 * peso_est / gat_est.sum(axis=(1, 2, 3)))[:, None, None, None]
-    gat_rep *= (0.5 * contagens_estresse / 8.0 * peso_rep / gat_rep.sum(axis=(1, 2, 3)))[:, None, None, None]
+    gat_est = gated["estresse"] * (contagens_estresse / 8.0 * peso_est / gated["estresse"].sum(axis=(1, 2, 3)))[:, None, None, None]
+    gat_rep = gated["repouso"] * (0.5 * contagens_estresse / 8.0 * peso_rep / gated["repouso"].sum(axis=(1, 2, 3)))[:, None, None, None]
     if ruido:
         est, rep, gat_est, gat_rep = (rng.poisson(x).astype(np.float64) for x in (est, rep, gat_est, gat_rep))
     arquivos = {
@@ -626,9 +704,11 @@ def fantoma_perfusao(semente: int = 7, ruido: bool = True, contagens_estresse: f
         "gated_repouso.dcm": gerar_dicom_nm(gat_rep, "REST Gated", gated=True, z0_mm=z0,
                                             info_gated={"frequencia": 64, "rr_nominal": 938, "rr_min": 750, "rr_max": 1125, "aceitos": 700, "rejeitados": 6}),
     }
-    eixo = {"base": (centro - 20.0 * a).tolist(), "apice": (centro + 45.0 * a).tolist()}
+    d = GEOMETRIA_DIASTOLE
+    eixo = {"base": (centro + d.s_base * a).tolist(), "apice": (centro + d.Le * a).tolist()}
     return FantomaPerfusao(arquivos, eixo, (5, 6, 11, 12), 0.5,
-                           "VE sintético com defeito lateral no estresse (50% nos segmentos 5, 6, 11 e 12) e repouso normal.")
+                           "VE sintético batendo (FE verdadeira de cerca de 60%), com defeito lateral no estresse "
+                           "(50% nos segmentos 5, 6, 11 e 12), dilatação de 5% no estresse e repouso normal.", verdade)
 
 
 def fantoma_ponto(posicao_mm=(40.0, -30.0, 20.0), geometria: dict | None = None) -> bytes:

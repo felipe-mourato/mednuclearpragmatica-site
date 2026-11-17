@@ -384,6 +384,10 @@ def test_protocolo_e_lote(sessao_pronta, fp, tmp_path):
     assert lote_main([str(tmp_path / "p.json"), "--pasta", str(tmp_path), "--csv", str(tmp_path / "o.csv"), "--laudo", str(tmp_path / "l.html")]) == 0
     texto = (tmp_path / "o.csv").read_text(encoding="utf-8")
     assert "SSS" in texto and ",8,0,8," in texto
+    import csv as _csv
+    linha = next(_csv.DictReader(texto.splitlines()))
+    assert 50 < float(linha["repouso_fe"]) < 68 and float(linha["TID"]) > 1.0
+    assert "Função ventricular (gated)" in (tmp_path / "l.html").read_text(encoding="utf-8")
     original = sessao_pronta.mapa_polar("estresse").valores_segmentos()
     s2 = Sessao.de_protocolo(prot, lambda n, h: fp.arquivos[n])
     assert s2.mapa_polar("estresse").valores_segmentos() == original

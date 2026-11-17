@@ -1,15 +1,16 @@
-"""Sessão de processamento da cintilografia de perfusão miocárdica (SPECT), parte 1.
+"""Sessão de processamento da cintilografia de perfusão miocárdica (SPECT).
 
 Guarda o estado de um exame (arquivos e tipos, filtro, eixos, escores) e
 responde a comandos em JSON. A interface web só envia comandos e desenha o
 que recebe; toda a lógica fica aqui e é testada com pytest.
 
 Parte 1: controle de qualidade, reconstrução, eixos, cortes, mapa polar e
-escores visuais. Parte 2 (planejada): bordas do VE no gated, FEVE,
-volumes, dilatação isquêmica transitória, motilidade e espessamento. Os
-arquivos de gated já entram aqui: controle de qualidade (cabeçalho e
-contagens por intervalo) e, se faltar a aquisição não sincronizada, a
-soma dos intervalos serve de imagem de perfusão.
+escores visuais de perfusão. Parte 2 (gated): cada intervalo reconstruído
+com o mesmo filtro e reorientado com o eixo do estudo (estresse ou
+repouso), bordas do VE, volumes, FE, TID, mapas de motilidade e
+espessamento e escores visuais de função (:mod:`.gated`). Se faltar a
+aquisição não sincronizada, a soma dos intervalos do gated serve de imagem
+de perfusão.
 """
 
 from __future__ import annotations
@@ -23,7 +24,7 @@ from .. import __version__, versoes
 from ..comum import exibicao
 from ..comum.dicom import ErroDicom
 from ..comum.tabela import fmt_dec, fmt_int
-from . import controle, eixos, figuras, polar, relatorio
+from . import controle, eixos, figuras, gated, polar, relatorio
 from .aquisicao import ROTULOS_TIPO, TIPOS, Aquisicao, adivinhar_tipo, ler_aquisicao
 from .escores import calcular_escores, validar_escore
 from .reconstrucao import CORTE_PADRAO, ORDEM_PADRAO, Filtro, Volume, butterworth, reconstruir
@@ -38,6 +39,9 @@ PONTUADOS = ("estresse", "repouso")
 PARES = (("estresse", "repouso"), ("prona_estresse", "prona_repouso"))
 LADO_POLAR = 256
 FATOR_CORTES = 4
+#: Escores visuais de função (gated): motilidade 0–5 e espessamento 0–3.
+TIPOS_FUNCAO = ("motilidade", "espessamento")
+TETO_FUNCAO = {"motilidade": gated.MOTILIDADE_MAX, "espessamento": gated.ESPESSAMENTO_MAX}
 
 
 class ErroSessao(ValueError):
@@ -79,6 +83,12 @@ class Sessao:
         self._vol: dict = {}
         self._polar: dict = {}
         self._eixo_fonte: dict[str, str] = {}
+        self.escores_funcao: dict[str, dict[str, dict[int, int]]] = {t: {e: {} for e in PONTUADOS} for t in TIPOS_FUNCAO}
+        self.antropometria: dict[str, float] = {}
+        self._vol_gated: dict = {}
+        self._gated: dict = {}
+        self._cortes_gated: dict = {}
+        self._vol_tid: dict = {}
 
     def _novo_id(self, prefixo: str) -> str:
         self._contador += 1
@@ -140,6 +150,18 @@ class Sessao:
             if chave[0] not in validos or chave[1] != validos[chave[0]]:
                 del self._vol[chave]
         self._polar.clear()
+        self._limpar_gated()
+
+    def _limpar_gated(self, estudo: str | None = None) -> None:
+        """Descarta resultados do gated (todos, ou de um estudo). Os volumes por intervalo só saem com a fonte ou o filtro."""
+        for cache in (self._gated, self._cortes_gated, self._vol_tid):
+            for chave in list(cache):
+                if estudo is None or chave[0] == estudo:
+                    del cache[chave]
+        validos = {e: a.id for e in PONTUADOS for a in [self._fonte_gated(e)] if a}
+        for chave in list(self._vol_gated):
+            if validos.get(chave[0]) != chave[1]:
+                del self._vol_gated[chave]
 
     def _por_tipo(self, tipo: str) -> list[Arquivo]:
         return [a for a in self.arquivos.values() if a.tipo == tipo]
@@ -157,6 +179,16 @@ class Sessao:
 
     def estudos_disponiveis(self) -> list[str]:
         return [e for e in ESTUDOS if self._fonte(e) is not None]
+
+    def _fonte_gated(self, estudo: str) -> Arquivo | None:
+        """Arquivo do gated de um estudo (estresse ou repouso), se houver um só."""
+        if estudo not in PONTUADOS:
+            return None
+        lista = [a for a in self._por_tipo(f"gated_{estudo}") if a.aq.gated]
+        return lista[0] if len(lista) == 1 else None
+
+    def gated_disponiveis(self) -> list[str]:
+        return [e for e in PONTUADOS if self._fonte_gated(e) is not None]
 
     # ------------------------------------------------------------- validação
     def _validacao_arquivos(self) -> str | None:
@@ -203,6 +235,8 @@ class Sessao:
             raise ErroSessao(str(erro)) from None
         self._vol.clear()
         self._polar.clear()
+        self._vol_gated.clear()
+        self._limpar_gated()
 
     def _vol_chave(self, estudo: str):
         f = self._fonte(estudo)
@@ -263,6 +297,7 @@ class Sessao:
             raise ErroSessao(str(erro)) from None
         self._eixo_fonte[estudo] = self._fonte(estudo)[0].id
         self._polar.pop(estudo, None)
+        self._limpar_gated(estudo)
 
     def copiar_eixo(self, de, para) -> None:
         if de not in self.eixos:
@@ -272,6 +307,7 @@ class Sessao:
         self.eixos[para] = eixos.marcacoes_de_eixo(vol, src.base, src.apice)
         self._eixo_fonte[para] = self._fonte(para)[0].id
         self._polar.pop(para, None)
+        self._limpar_gated(para)
 
     def comprimento_par(self, estudo) -> float | None:
         """Comprimento comum do eixo curto no par (estresse e repouso; pronas): o maior dos eixos traçados."""
@@ -284,6 +320,7 @@ class Sessao:
     def apagar_eixo(self, estudo) -> None:
         self.eixos.pop(estudo, None)
         self._polar.pop(estudo, None)
+        self._limpar_gated(estudo)
 
     def _eixo(self, estudo) -> eixos.Eixo:
         if estudo not in self.eixos:
@@ -339,6 +376,145 @@ class Sessao:
     def calcular_escores(self):
         return calcular_escores(self.escores["estresse"], self.escores["repouso"])
 
+    # ------------------------------------------------------------------ gated
+    def volumes_gated(self, estudo: str) -> list[Volume]:
+        """Um volume por intervalo do gated, com o filtro atual."""
+        a = self._fonte_gated(estudo)
+        if a is None:
+            raise ErroSessao(f"Sem gated do {ROTULO_ESTUDO.get(estudo, estudo).lower()}.")
+        chave = (estudo, a.id)
+        if chave not in self._vol_gated:
+            self._vol_gated[chave] = [reconstruir(a.aq, self.filtro, k) for k in range(a.aq.n_intervalos)]
+        return self._vol_gated[chave]
+
+    def funcao(self, estudo: str) -> gated.ResultadoGated:
+        """Bordas, volumes e FE do gated do estudo, com o eixo do próprio estudo."""
+        chave = (estudo,)
+        if chave not in self._gated:
+            a = self._fonte_gated(estudo)
+            if a is None:
+                raise ErroSessao(f"Sem gated do {ROTULO_ESTUDO.get(estudo, estudo).lower()}.")
+            vols = self.volumes_gated(estudo)
+            totais = a.aq.projecoes.sum(axis=(1, 2, 3))
+            try:
+                self._gated[chave] = gated.analisar_gated(vols, totais, self._eixo(estudo))
+            except ValueError as erro:
+                raise ErroSessao(str(erro)) from None
+        return self._gated[chave]
+
+    def volume_cavidade_nao_sincronizado(self, estudo: str) -> float:
+        chave = (estudo,)
+        if chave not in self._vol_tid:
+            self._vol_tid[chave] = gated.volume_nao_sincronizado(self.volume(estudo), self._eixo(estudo))
+        return self._vol_tid[chave]
+
+    def tid(self) -> dict | None:
+        """TID (estresse ÷ repouso) nas imagens não sincronizadas, se os dois estudos tiverem eixo."""
+        if not all(self._fonte(e) and e in self.eixos for e in PONTUADOS):
+            return None
+        ve, vr = (self.volume_cavidade_nao_sincronizado(e) for e in PONTUADOS)
+        de_gated = [ROTULO_ESTUDO[e] for e in PONTUADOS if self._fonte(e)[1]]
+        return {"estresse_ml": round(ve, 1), "repouso_ml": round(vr, 1), "tid": round(gated.calcular_tid(ve, vr), 2),
+                "de_gated": de_gated}
+
+    def superficie_corporal(self) -> float | None:
+        a = self.antropometria
+        if a.get("peso_kg") and a.get("altura_cm"):
+            return gated.superficie_corporal(a["peso_kg"], a["altura_cm"])
+        return None
+
+    def definir_antropometria(self, peso, altura) -> None:
+        """Peso (kg) e altura (cm), digitados (nunca lidos do DICOM), para indexar os volumes. Vazios apagam."""
+        if peso in (None, "") or altura in (None, ""):
+            self.antropometria = {}
+            return
+        p, h = float(peso), float(altura)
+        if not (2.0 <= p <= 400.0 and 40.0 <= h <= 250.0):
+            raise ErroSessao("Peso entre 2 e 400 kg e altura entre 40 e 250 cm.")
+        self.antropometria = {"peso_kg": p, "altura_cm": h}
+
+    def pontuar_funcao(self, tipo, estudo, segmento, escore) -> None:
+        if tipo not in TIPOS_FUNCAO:
+            raise ErroSessao("Escore de função desconhecido.")
+        if estudo not in PONTUADOS:
+            raise ErroSessao("Só o estresse e o repouso são pontuados.")
+        s = int(segmento)
+        if s not in polar.SEGMENTOS:
+            raise ErroSessao("Segmento deve ser de 1 a 17.")
+        if escore is None:
+            self.escores_funcao[tipo][estudo].pop(s, None)
+            return
+        try:
+            self.escores_funcao[tipo][estudo][s] = gated.validar_escore_funcao(tipo, escore)
+        except ValueError as erro:
+            raise ErroSessao(str(erro)) from None
+
+    def pontuar_funcao_todos(self, tipo, estudo, escore) -> None:
+        for s in polar.SEGMENTOS:
+            self.pontuar_funcao(tipo, estudo, s, escore)
+
+    def copiar_escores_funcao(self, tipo, de, para) -> None:
+        if tipo not in TIPOS_FUNCAO or de not in PONTUADOS or para not in PONTUADOS:
+            raise ErroSessao("Escore de função ou estudo desconhecido.")
+        self.escores_funcao[tipo][para] = dict(self.escores_funcao[tipo][de])
+
+    def _mapa_funcao(self, estudo: str, tipo: str) -> polar.MapaPolar:
+        r = self.funcao(estudo)
+        return r.motilidade if tipo == "motilidade" else r.espessamento
+
+    def _somas_funcao(self, estudo: str) -> dict:
+        return {
+            "sms": gated.escores_funcao(self.escores_funcao["motilidade"][estudo], "motilidade"),
+            "sts": gated.escores_funcao(self.escores_funcao["espessamento"][estudo], "espessamento"),
+        }
+
+    def funcao_info(self, com_malha: bool = True) -> dict:
+        """Resultados do gated para a interface: por estudo (volumes, FE, mapas, escores, malha) e a TID."""
+        sc = self.superficie_corporal()
+        estudos = {}
+        for e in self.gated_disponiveis():
+            if e not in self.eixos:
+                continue
+            r = self.funcao(e)
+            item = r.resumo()
+            item["rotulo"] = ROTULO_ESTUDO[e]
+            item["n_intervalos"] = len(r.volumes_ml)
+            item["de_soma"] = bool(self._fonte(e) and self._fonte(e)[1])
+            if sc:
+                item["indices"] = {"vdf_ml_m2": round(r.vdf_ml / sc, 1), "vsf_ml_m2": round(r.vsf_ml / sc, 1)}
+            mapas = {}
+            for tipo in TIPOS_FUNCAO:
+                mp = self._mapa_funcao(e, tipo)
+                mapas[tipo] = {
+                    "valores": {str(s): round(v, 1) for s, v in mp.valores_segmentos().items()},
+                    "rho_apice": mp.rho_apice,
+                    "segmentos": polar.geometria_segmentos(mp.rho_apice, LADO_POLAR),
+                    "escores": {str(s): self.escores_funcao[tipo][e].get(s) for s in polar.SEGMENTOS},
+                    "teto": TETO_FUNCAO[tipo],
+                }
+            item["mapas"] = mapas
+            item["somas"] = self._somas_funcao(e)
+            if com_malha:
+                item["malha"] = r.malha()
+            estudos[e] = item
+        return {
+            "estudos": estudos,
+            "tid": self.tid(),
+            "superficie_corporal": round(sc, 2) if sc else None,
+            "antropometria": dict(self.antropometria),
+            "lado": LADO_POLAR,
+            "metodo": {"espessura_diastole_mm": gated.ESPESSURA_DIASTOLE_MM, "limiar_valva": gated.LIMIAR_VALVA},
+        }
+
+    def _cortes_gated_teto(self, estudo: str, tipo: str):
+        chave = (estudo, tipo)
+        if chave not in self._cortes_gated:
+            e = self._eixo(estudo)
+            pilhas = np.stack([eixos.cortes(v, e, tipo, comprimento=self.comprimento_par(estudo))[1] for v in self.volumes_gated(estudo)])
+            teto = float(np.percentile(pilhas, 99.9)) or float(pilhas.max()) or 1.0
+            self._cortes_gated[chave] = (pilhas, teto)
+        return self._cortes_gated[chave]
+
     # ----------------------------------------------------------------- imagens
     def _cinza(self, valores, pedido, padrao) -> bytes:
         nivel = float(pedido["nivel"]) if pedido.get("nivel") is not None else padrao["nivel"]
@@ -368,7 +544,9 @@ class Sessao:
         * ``sinograma`` (arquivo, linha) e ``linograma`` (arquivo);
         * ``transaxial`` (estudo, corte) e ``plano_vertical`` (estudo; ou corte, base_1, apice_1);
         * ``faixa`` (estudo, tipo SA | VLA | HLA) e ``previa`` (estudo: SA, VLA e HLA do meio);
-        * ``polar`` (estudo; com_escores).
+        * ``polar`` (estudo; com_escores);
+        * ``faixa_gated`` (estudo, tipo, intervalo): cortes de um intervalo do gated;
+        * ``polar_funcao`` (estudo, tipo motilidade | espessamento; com_escores).
         As imagens em cinza aceitam nivel, largura e invertido.
         """
         if isinstance(pedido, str):
@@ -414,6 +592,20 @@ class Sessao:
                 d = float(pos[np.argmin(np.abs(pos - meio))])
                 ims.append(eixos.corte(vol, e, tipo, d))
             return figuras.faixa_rgba(np.stack(ims), self._teto(estudo), self.mapa, FATOR_CORTES, espaco=6).tobytes()
+        if fonte == "faixa_gated":
+            tipo = str(pedido.get("tipo", "SA"))
+            pilhas, teto = self._cortes_gated_teto(estudo, tipo)
+            k = int(np.clip(int(pedido.get("intervalo", 0)), 0, pilhas.shape[0] - 1))
+            fator = self.tetos.get(estudo, 100.0) / 100.0
+            return figuras.faixa_rgba(pilhas[k], teto * fator, pedido.get("mapa") or self.mapa, FATOR_CORTES).tobytes()
+        if fonte == "polar_funcao":
+            tipo = pedido.get("tipo")
+            if tipo not in TIPOS_FUNCAO:
+                raise ErroSessao("Mapa de função desconhecido.")
+            mp = self._mapa_funcao(estudo, tipo)
+            esc = self.escores_funcao[tipo][estudo] if pedido.get("com_escores") else None
+            return figuras.polar_rgba(mp.imagem(LADO_POLAR), mp.rho_apice, pedido.get("mapa") or self.mapa, esc,
+                                      teto=TETO_FUNCAO[tipo]).tobytes()
         if fonte == "polar":
             mp = self.mapa_polar(estudo)
             esc = self.escores.get(estudo) if pedido.get("com_escores") and estudo in PONTUADOS else None
@@ -480,13 +672,15 @@ class Sessao:
             raise ErroSessao(problema)
         r = self.calcular_escores()
         valores = {e: self.mapa_polar(e).valores_segmentos() for e in PONTUADOS if self._fonte(e)}
+        fun = self._funcao_relatorio()
         return {
+            "funcao": fun,
             "segmentos": relatorio.tabela_segmentos(r, valores),
             "resumo": relatorio.resumo_escores(r),
             "territorios": relatorio.tabela_territorios(r),
             "avisos": r.avisos,
-            "tabelas_html": relatorio.tabelas_html(r, valores),
-            "tabelas_texto": relatorio.tabelas_texto(r, valores),
+            "tabelas_html": relatorio.tabelas_html(r, valores) + relatorio.funcao_tabelas_html(fun),
+            "tabelas_texto": relatorio.tabelas_texto(r, valores) + relatorio.funcao_texto(fun),
             "versao": __version__,
         }
 
@@ -551,6 +745,9 @@ class Sessao:
             "tetos": dict(self.tetos),
             "escores": {e: {str(s): self.escores[e].get(s) for s in polar.SEGMENTOS} for e in PONTUADOS},
             "somas": {"sss": r.sss, "srs": r.srs, "sds": r.sds},
+            "gated": self.gated_disponiveis(),
+            "escores_funcao": {t: {e: {str(s): self.escores_funcao[t][e].get(s) for s in polar.SEGMENTOS} for e in PONTUADOS} for t in TIPOS_FUNCAO},
+            "antropometria": dict(self.antropometria),
             "reconstruido": all(self._vol_chave(e) in self._vol for e in self.estudos_disponiveis()) and bool(self.estudos_disponiveis()),
             "avisos": self._avisos(),
             "erros": list(self.erros),
@@ -589,6 +786,38 @@ class Sessao:
             )
         return saida
 
+    def _funcao_relatorio(self) -> dict | None:
+        """Dados do gated para laudo, tabelas e planilha (sem malha)."""
+        info = self.funcao_info(com_malha=False)
+        if not info["estudos"] and not info["tid"]:
+            return None
+        return info
+
+    def _imagens_funcao(self, malhas=None) -> dict:
+        polares = []
+        for e in self.gated_disponiveis():
+            if e not in self.eixos:
+                continue
+            for tipo in TIPOS_FUNCAO:
+                mp = self._mapa_funcao(e, tipo)
+                png = figuras.png(figuras.polar_rgba(mp.imagem(LADO_POLAR), mp.rho_apice, self.mapa, self.escores_funcao[tipo][e], teto=TETO_FUNCAO[tipo]))
+                polares.append((f"{ROTULO_ESTUDO[e]} · {'motilidade (0–10 mm)' if tipo == 'motilidade' else 'espessamento (0–100%)'}", png))
+        imgs = []
+        for m in malhas or []:
+            try:
+                rot, url = str(m["rotulo"]), str(m["png"])
+            except (KeyError, TypeError):
+                continue
+            prefixo = "data:image/png;base64,"
+            if url.startswith(prefixo) and len(url) < 3_000_000:
+                import base64
+
+                try:
+                    imgs.append((rot, base64.b64decode(url[len(prefixo):], validate=True)))
+                except ValueError:
+                    continue
+        return {"polares": polares, "malhas": imgs}
+
     def imagens_laudo(self) -> dict:
         """PNGs do laudo: faixas de cortes por tipo e estudo, e mapas polares com os escores."""
         cortes: dict = {}
@@ -606,7 +835,7 @@ class Sessao:
                 polares.append((ROTULO_ESTUDO[e], figuras.png(figuras.polar_rgba(mp.imagem(LADO_POLAR), mp.rho_apice, self.mapa, self.escores[e]))))
         return {"cortes": cortes, "polares": polares}
 
-    def laudo(self, paciente: str = "", data_exame: str = "", versoes_extra: dict | None = None, com_imagens: bool = True) -> str:
+    def laudo(self, paciente: str = "", data_exame: str = "", versoes_extra: dict | None = None, com_imagens: bool = True, malhas=None) -> str:
         res = self._resultados()
         v = versoes()
         v.update({k: str(x) for k, x in (versoes_extra or {}).items()})
@@ -621,9 +850,11 @@ class Sessao:
             paciente=paciente,
             data_exame=data_exame,
             imagens=self.imagens_laudo() if com_imagens else None,
-            avisos=self._avisos() + res["avisos"],
+            avisos=self._avisos() + res["avisos"] + [f"{d['rotulo']} (gated): {x}" for d in ((res["funcao"] or {}).get("estudos") or {}).values() for x in d["avisos"]],
             mapa=self.mapa,
             pixel_mm=next((a.aq.pixel_mm for a in self.arquivos.values()), None),
+            funcao=res["funcao"],
+            imagens_funcao=self._imagens_funcao(malhas) if com_imagens and res["funcao"] else None,
         )
 
     # ------------------------------------------------------------- protocolo
@@ -637,6 +868,7 @@ class Sessao:
             "filtro": {"corte_nyquist": self.filtro.corte_nyquist, "ordem": self.filtro.ordem},
             "eixos": {e: x.como_dict() for e, x in self.eixos.items()},
             "escores": {e: {str(s): v for s, v in self.escores[e].items()} for e in PONTUADOS},
+            "escores_funcao": {t: {e: {str(s): v for s, v in self.escores_funcao[t][e].items()} for e in PONTUADOS} for t in TIPOS_FUNCAO},
             "exibicao": {"mapa": self.mapa, "tetos": dict(self.tetos)},
         }
 
@@ -669,6 +901,11 @@ class Sessao:
         for e, d in (protocolo.get("escores") or {}).items():
             if e in PONTUADOS:
                 s.escores[e] = {int(k): validar_escore(v) for k, v in d.items()}
+        for tipo, por_estudo in (protocolo.get("escores_funcao") or {}).items():
+            if tipo in TIPOS_FUNCAO:
+                for e, d in por_estudo.items():
+                    if e in PONTUADOS:
+                        s.escores_funcao[tipo][e] = {int(k): gated.validar_escore_funcao(tipo, v) for k, v in d.items()}
         ex = protocolo.get("exibicao") or {}
         s.mapa = ex.get("mapa", s.mapa)
         s.tetos = {k: float(v) for k, v in (ex.get("tetos") or {}).items()}
@@ -767,10 +1004,25 @@ class Sessao:
             if acao == "janela_arraste":
                 j = exibicao.ajustar_janela_por_arraste(c["nivel"], c["largura"], c["dx"], c["dy"], c["faixa"])
                 return self._resposta({"nivel": j.nivel, "largura": j.largura}, com_estado=False)
+            if acao == "funcao":
+                return self._resposta({"funcao": self.funcao_info(bool(c.get("com_malha", True)))}, com_estado=False)
+            if acao == "pontuar_funcao":
+                self.pontuar_funcao(c["tipo"], c["estudo"], c["segmento"], c.get("escore"))
+                return self._resposta()
+            if acao == "pontuar_funcao_todos":
+                self.pontuar_funcao_todos(c["tipo"], c["estudo"], c.get("escore"))
+                return self._resposta()
+            if acao == "copiar_escores_funcao":
+                self.copiar_escores_funcao(c["tipo"], c["de"], c["para"])
+                return self._resposta()
+            if acao == "definir_antropometria":
+                self.definir_antropometria(c.get("peso"), c.get("altura"))
+                return self._resposta()
             if acao == "resultados":
                 return self._resposta(self._resultados(), com_estado=False)
             if acao == "laudo":
-                html = self.laudo(str(c.get("paciente") or ""), str(c.get("data_exame") or ""), c.get("versoes_extra"), c.get("com_imagens", True))
+                html = self.laudo(str(c.get("paciente") or ""), str(c.get("data_exame") or ""), c.get("versoes_extra"), c.get("com_imagens", True),
+                                  c.get("malhas"))
                 return self._resposta({"html": html}, com_estado=False)
             if acao == "protocolo":
                 return self._resposta({"protocolo": self.protocolo()}, com_estado=False)
@@ -791,6 +1043,12 @@ class Sessao:
             e = pedido["estudo"]
             mp = self.mapa_polar(e)
             return figuras.png(figuras.polar_rgba(mp.imagem(LADO_POLAR), mp.rho_apice, self.mapa, self.escores.get(e) if e in PONTUADOS else None))
+        if formato == "png_polar_funcao":
+            e, tipo = pedido["estudo"], pedido["tipo"]
+            if tipo not in TIPOS_FUNCAO:
+                raise ErroSessao("Mapa de função desconhecido.")
+            mp = self._mapa_funcao(e, tipo)
+            return figuras.png(figuras.polar_rgba(mp.imagem(LADO_POLAR), mp.rho_apice, self.mapa, self.escores_funcao[tipo][e], teto=TETO_FUNCAO[tipo]))
         if formato == "png_cortes":
             e = pedido["estudo"]
             _, ims = eixos.cortes(self.volume(e), self._eixo(e), pedido.get("tipo", "SA"), comprimento=self.comprimento_par(e))
@@ -798,8 +1056,9 @@ class Sessao:
         self._resultados()
         r = self.calcular_escores()
         valores = {e: self.mapa_polar(e).valores_segmentos() for e in PONTUADOS if self._fonte(e)}
+        fun = self._funcao_relatorio()
         if formato == "csv":
-            return relatorio.csv_resultados(r, valores)
+            return relatorio.csv_resultados(r, valores, fun)
         if formato == "xlsx":
-            return relatorio.xlsx_resultados(r, valores, self.filtro, __version__)
+            return relatorio.xlsx_resultados(r, valores, self.filtro, __version__, fun)
         raise ErroSessao("Formato de exportação desconhecido.")

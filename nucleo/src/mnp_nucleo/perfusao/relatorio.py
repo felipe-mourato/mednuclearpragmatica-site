@@ -28,6 +28,10 @@ __all__ = [
     "xlsx_resultados",
     "descrever_filtro",
     "laudo_html",
+    "funcao_tabelas_html",
+    "funcao_texto",
+    "linhas_funcao",
+    "NOTAS_FUNCAO",
 ]
 
 AVISO = (
@@ -42,6 +46,23 @@ NOTAS_METODO = (
     "Percentual do VE = escore somado ÷ 68 × 100, porque 68 = 4 × 17 é o máximo (ASNC 2017).",
     "Faixas do SSS: < 4 normal; 4 a 8 discretamente anormal; 9 a 13 moderadamente anormal; > 13 francamente anormal (SBC 2020, citando Hachamovitch).",
     "Captação no mapa polar: perfil de contagem máxima ao longo de raios a partir do eixo, em % do máximo do VE; o valor do segmento é a média das amostras dele. Sem banco de normalidade: os valores apoiam a pontuação visual, não classificam.",
+)
+
+
+NOTAS_FUNCAO = (
+    "FE = (VDF − VSF) ÷ VDF × 100; VDF e VSF = maior e menor volume da curva de volume do gated (diástole e sístole finais).",
+    "Bordas do VE: superfície mediomiocárdica pelo máximo de contagem, plano valvar ajustado em cada intervalo, espessura "
+    "de 10 mm assumida na diástole final e, nos outros intervalos, espessura pelo aumento de contagem (volume parcial) com "
+    "massa miocárdica constante (implementação própria no estilo de Germano 1995 e 1997).",
+    "Motilidade: deslocamento do endocárdio da diástole para a sístole final (mm; mapa de 0 a 10 mm). Espessamento: aumento "
+    "relativo da espessura da diástole para a sístole final (%; mapa de 0 a 100%). Sem banco de normalidade: o septo costuma "
+    "mover menos que a parede lateral e o ápice espessa mais que a base, mesmo em pessoas normais (manual do QGS).",
+    "Escores visuais: motilidade 0 normal, 1 hipocinesia discreta, 2 moderada, 3 acentuada, 4 acinesia, 5 discinesia; "
+    "espessamento 0 normal, 1 discretamente reduzido, 2 moderada a acentuadamente reduzido, 3 ausente (SBC 2020; manual do QGS). "
+    "SMS e STS = somas dos 17 segmentos; % = soma ÷ 85 (motilidade) ou ÷ 51 (espessamento).",
+    "TID = volume da cavidade no estresse ÷ no repouso, nas imagens não sincronizadas, pelo mesmo método de bordas (Abidov 2004). "
+    "Mostrada sem ponto de corte: o limiar depende do protocolo, do radiofármaco e do programa.",
+    "Volumes indexados pela superfície corporal de Mosteller (√(altura × peso ÷ 3600)), com peso e altura digitados.",
 )
 
 
@@ -185,22 +206,69 @@ def _num(v):
     return "—" if v is None else v
 
 
-def csv_resultados(r: Escores, valores: dict) -> bytes:
+def _f(v, casas=1):
+    return "—" if v is None else round(float(v), casas)
+
+
+def linhas_funcao(fun: dict | None) -> list[list]:
+    """Linhas do gated para CSV e planilha: resumo por estudo, TID e valores e escores por segmento."""
+    if not fun:
+        return []
+    est = fun.get("estudos") or {}
+    linhas: list[list] = []
+    if est:
+        linhas += [["Função (gated)", "FE (%)", "VDF (mL)", "VSF (mL)", "VS (mL)", "VDF/SC (mL/m²)", "VSF/SC (mL/m²)",
+                    "Diástole final (intervalo)", "Sístole final (intervalo)", "SMS", "SM%", "STS", "ST%", "Volumes por intervalo (mL)"]]
+        for d in est.values():
+            ind = d.get("indices") or {}
+            sms, sts = (d.get("somas") or {}).get("sms"), (d.get("somas") or {}).get("sts")
+            linhas.append([d["rotulo"], d["fe"], d["vdf_ml"], d["vsf_ml"], d["vs_ml"], _f(ind.get("vdf_ml_m2")), _f(ind.get("vsf_ml_m2")),
+                           d["ed"], d["es"], sms["soma"] if sms else "—", sms["percentual"] if sms else "—",
+                           sts["soma"] if sts else "—", sts["percentual"] if sts else "—",
+                           "; ".join(fmt_dec(v, 1) for v in d["volumes_ml"])])
+    tid = fun.get("tid")
+    if tid:
+        linhas += [[], ["TID (não sincronizadas)", "Volume estresse (mL)", "Volume repouso (mL)", "TID"],
+                   ["Estresse ÷ repouso", tid["estresse_ml"], tid["repouso_ml"], tid["tid"]]]
+    if fun.get("superficie_corporal"):
+        linhas += [["Superfície corporal (m², Mosteller)", fun["superficie_corporal"]]]
+    if est:
+        cab = ["Segmento", "Nome"]
+        for d in est.values():
+            cab += [f"Motilidade {d['rotulo'].lower()} (mm)", f"Espessamento {d['rotulo'].lower()} (%)",
+                    f"Escore motilidade {d['rotulo'].lower()}", f"Escore espessamento {d['rotulo'].lower()}"]
+        linhas += [[], cab]
+        for s in SEGMENTOS:
+            ln = [s, NOMES[s]]
+            for d in est.values():
+                seg = d["segmentos"][str(s)]
+                em = d["mapas"]["motilidade"]["escores"].get(str(s))
+                ee = d["mapas"]["espessamento"]["escores"].get(str(s))
+                ln += [seg["motilidade_mm"], seg["espessamento"], _num(em), _num(ee)]
+            linhas.append(ln)
+    return linhas
+
+
+def csv_resultados(r: Escores, valores: dict, fun: dict | None = None) -> bytes:
     linhas = _linhas_exportacao(r, valores)
-    return gerar_csv(linhas[0], linhas[1:])
+    extra = linhas_funcao(fun)
+    return gerar_csv(linhas[0], linhas[1:] + ([[]] + extra if extra else []))
 
 
-def xlsx_resultados(r: Escores, valores: dict, filtro: Filtro, versao: str) -> bytes:
+def xlsx_resultados(r: Escores, valores: dict, filtro: Filtro, versao: str, fun: dict | None = None) -> bytes:
+    extra = linhas_funcao(fun)
     corpo = [
         ["Cintilografia de perfusão miocárdica (SPECT)"],
         [f"Reconstrução: {descrever_filtro(filtro, None)}"],
         [f"Núcleo mnp-nucleo {versao}"],
         [],
         *_linhas_exportacao(r, valores),
+        *([[]] + extra if extra else []),
         [],
         *[[n] for n in NOTAS_METODO],
+        *([[n] for n in NOTAS_FUNCAO] if extra else []),
         [],
-        *[[f.citacao + (f" doi:{f.doi}" if f.doi else "")] for f in refs.BIBLIOGRAFIA],
+        *[[f.citacao + (f" doi:{f.doi}" if f.doi else "")] for f in refs.BIBLIOGRAFIA + (refs.BIBLIOGRAFIA_GATED if extra else ())],
         [],
         [AVISO],
     ]
@@ -236,6 +304,91 @@ def _figuras_html(imagens: dict | None) -> str:
                       "lateral à direita e inferior embaixo. Números: escore visual de cada segmento (– = não pontuado). Cores em % do "
                       "máximo do VE de cada estudo.</p>")
     return '<section class="laudo-imagens"><h3>Imagens</h3>' + "".join(blocos) + "</section>"
+
+
+def _curva_svg(volumes: Sequence[float], ed: int, es: int) -> str:
+    """Curva de volume (mL por intervalo) em SVG simples, com o primeiro intervalo repetido no fim (como no QGS)."""
+    v = list(volumes) + [volumes[0]]
+    n = len(v)
+    L, A, m = 260, 120, 28
+    vmax = max(v) * 1.1 or 1.0
+    x = lambda i: m + i * (L - m - 8) / max(n - 1, 1)  # noqa: E731
+    y = lambda val: A - 18 - val / vmax * (A - 30)  # noqa: E731
+    pts = " ".join(f"{x(i):.1f},{y(val):.1f}" for i, val in enumerate(v))
+    marcas = "".join(
+        f'<circle cx="{x(i):.1f}" cy="{y(v[i]):.1f}" r="3.5" fill="{cor}"/><text x="{x(i):.1f}" y="{y(v[i]) - 7:.1f}" font-size="9" text-anchor="middle">{rot}</text>'
+        for i, cor, rot in ((ed, "#b33a1f", "VDF"), (es, "#1f4f8f", "VSF"))
+    )
+    eixo_x = "".join(f'<text x="{x(i):.1f}" y="{A - 4}" font-size="8" text-anchor="middle">{(i % (n - 1)) + 1}</text>' for i in range(n))
+    return (f'<svg class="laudo-curva" viewBox="0 0 {L} {A}" width="{L}" height="{A}" role="img" aria-label="Curva de volume do VE">'
+            f'<line x1="{m}" y1="{A - 18}" x2="{L - 8}" y2="{A - 18}" stroke="#999" stroke-width="0.6"/>'
+            f'<text x="4" y="12" font-size="8">mL</text><text x="4" y="{y(vmax / 1.1):.1f}" font-size="8">{fmt_dec(vmax / 1.1, 0)}</text>'
+            f'<polyline points="{pts}" fill="none" stroke="#333" stroke-width="1.4"/>{marcas}{eixo_x}</svg>')
+
+
+def funcao_tabelas_html(fun: dict | None) -> str:
+    if not fun:
+        return ""
+    est = fun.get("estudos") or {}
+    partes = []
+    if est:
+        linhas = ""
+        for d in est.values():
+            ind = d.get("indices") or {}
+            sms, sts = d["somas"]["sms"], d["somas"]["sts"]
+            linhas += (f'<tr><th scope="row">{escape(d["rotulo"])}</th><td>{fmt_dec(d["fe"], 0)}%</td><td>{fmt_dec(d["vdf_ml"], 0)} mL'
+                       + (f' ({fmt_dec(ind["vdf_ml_m2"], 0)} mL/m²)' if ind else "") + f'</td><td>{fmt_dec(d["vsf_ml"], 0)} mL'
+                       + (f' ({fmt_dec(ind["vsf_ml_m2"], 0)} mL/m²)' if ind else "") + f'</td><td>{fmt_dec(d["vs_ml"], 0)} mL</td>'
+                       f'<td>{d["ed"]} / {d["es"]} de {d["n_intervalos"]}</td>'
+                       f'<td>{escape(_txt(sms and sms["soma"]))}</td><td>{escape(_txt(sts and sts["soma"]))}</td></tr>')
+        partes.append('<table class="laudo-funcao"><thead><tr><th scope="col">Gated</th><th scope="col">FE</th><th scope="col">VDF</th>'
+                      '<th scope="col">VSF</th><th scope="col">Volume sistólico</th><th scope="col">Diástole / sístole final (intervalo)</th>'
+                      f'<th scope="col">SMS</th><th scope="col">STS</th></tr></thead><tbody>{linhas}</tbody></table>')
+    tid = fun.get("tid")
+    if tid:
+        partes.append(f'<p class="laudo-tid"><strong>TID:</strong> {fmt_dec(tid["tid"], 2)} (cavidade de {fmt_dec(tid["estresse_ml"], 0)} mL no estresse '
+                      f'e {fmt_dec(tid["repouso_ml"], 0)} mL no repouso, imagens não sincronizadas).</p>')
+    if est:
+        cab = "".join(f'<th scope="col">Motilidade {escape(d["rotulo"].lower())}</th><th scope="col">Espessamento {escape(d["rotulo"].lower())}</th>' for d in est.values())
+        corpo = ""
+        for s in SEGMENTOS:
+            cel = ""
+            for d in est.values():
+                seg = d["segmentos"][str(s)]
+                em = d["mapas"]["motilidade"]["escores"].get(str(s))
+                ee = d["mapas"]["espessamento"]["escores"].get(str(s))
+                cel += (f'<td>{fmt_dec(seg["motilidade_mm"], 1)} mm · escore {escape(_txt(em))}</td>'
+                        f'<td>{fmt_dec(seg["espessamento"], 0)}% · escore {escape(_txt(ee))}</td>')
+            corpo += f'<tr><th scope="row">{s}. {escape(NOMES[s])}</th>{cel}</tr>'
+        partes.append(f'<div class="laudo-tabela"><table class="laudo-funcao-seg"><thead><tr><th scope="col">Segmento</th>{cab}</tr></thead><tbody>{corpo}</tbody></table></div>')
+    return "".join(partes)
+
+
+def funcao_texto(fun: dict | None) -> str:
+    linhas = linhas_funcao(fun)
+    if not linhas:
+        return ""
+    return "\n" + "\n".join("\t".join(str(c) for c in ln) for ln in linhas) + "\n"
+
+
+def _funcao_html(fun: dict | None, imagens: dict | None) -> str:
+    if not fun:
+        return ""
+    est = fun.get("estudos") or {}
+    curvas = "".join(f'<figure class="laudo-curva-fig">{_curva_svg([v for v in d["volumes_ml"]], d["ed"] - 1, d["es"] - 1)}'
+                     f'<figcaption>Curva de volume, {escape(d["rotulo"].lower())}</figcaption></figure>' for d in est.values())
+    figs = ""
+    if imagens:
+        malhas = "".join(f'<figure class="laudo-malha">{_img(png, f"Malha do VE, {rot}", "laudo-malha-img", 220)}<figcaption>{escape(rot)}</figcaption></figure>'
+                         for rot, png in imagens.get("malhas", []))
+        pol = "".join(f'<figure class="laudo-polar">{_img(png, f"Mapa polar de {rot}", "laudo-polar-img", 200)}<figcaption>{escape(rot)}</figcaption></figure>'
+                      for rot, png in imagens.get("polares", []))
+        figs = (f'<div class="laudo-polares">{malhas}</div>' if malhas else "") + (f'<div class="laudo-polares">{pol}</div>' if pol else "")
+    sc = f'<p class="laudo-nota">Superfície corporal: {fmt_dec(fun["superficie_corporal"], 2)} m² (Mosteller), com peso e altura digitados.</p>' if fun.get("superficie_corporal") else ""
+    return (f'<section><h3>Função ventricular (gated)</h3>{funcao_tabelas_html(fun)}{sc}'
+            f'<div class="laudo-polares">{curvas}</div>{figs}'
+            '<p class="laudo-nota">Mapas de função: motilidade de 0 a 10 mm e espessamento de 0 a 100% (valores fora da escala aparecem '
+            "no limite); números = escores visuais (– = não pontuado). Sem banco de normalidade.</p></section>")
 
 
 def _gated_html(arquivos_info: Sequence[dict]) -> str:
@@ -279,6 +432,8 @@ def laudo_html(
     mapa: str = "quente",
     gerado_em: datetime | None = None,
     pixel_mm: float | None = None,
+    funcao: dict | None = None,
+    imagens_funcao: dict | None = None,
 ) -> str:
     """Laudo de processamento em HTML (fragmento), para exibir, imprimir e colar no Word."""
     gerado_em = gerado_em or datetime.now()
@@ -294,8 +449,14 @@ def laudo_html(
     alertas = "".join(f"<li>{escape(a)}</li>" for a in avisos)
     alertas = f'<section class="laudo-alertas"><h3>Atenção</h3><ul>{alertas}</ul></section>' if avisos else ""
     arquivos = "".join(f"<li>{escape(a['rotulo'])}: {escape(a['nome'])} ({escape(a['detalhe'])})</li>" for a in arquivos_info)
-    notas = "".join(f"<li>{escape(n)}</li>" for n in NOTAS_METODO)
-    bib = "".join(f"<li>{escape(f.citacao)}{escape(f' doi:{f.doi}') if f.doi else ''}</li>" for f in refs.BIBLIOGRAFIA)
+    notas = "".join(f"<li>{escape(n)}</li>" for n in NOTAS_METODO + (NOTAS_FUNCAO if funcao else ()))
+    fontes = refs.BIBLIOGRAFIA + (refs.BIBLIOGRAFIA_GATED if funcao else ())
+    bib = "".join(f"<li>{escape(f.citacao)}{escape(f' doi:{f.doi}') if f.doi else ''}</li>" for f in fontes)
+    fe = ""
+    for d in ((funcao or {}).get("estudos") or {}).values():
+        fe += f"<div><dt>FE {escape(d['rotulo'].lower())}</dt><dd>{fmt_dec(d['fe'], 0)}%</dd></div>"
+    if (funcao or {}).get("tid"):
+        fe += f"<div><dt>TID</dt><dd>{fmt_dec(funcao['tid']['tid'], 2)}</dd></div>"
     pyodide = f" · Pyodide {escape(str(v['pyodide']))}" if v.get("pyodide") else ""
     escala = "; ".join(f"{k} {t}" for k, t in ESCALA.items())
     return f"""<article class="laudo">
@@ -307,6 +468,7 @@ def laudo_html(
 <div><dt>SSS</dt><dd>{escape(_txt(r.sss))}</dd></div>
 <div><dt>SRS</dt><dd>{escape(_txt(r.srs))}</dd></div>
 <div><dt>SDS</dt><dd>{escape(_txt(r.sds))}</dd></div>
+{fe}
 <div><dt>Processado em</dt><dd>{gerado_em.strftime('%d/%m/%Y %H:%M')}</dd></div>
 <div><dt>Núcleo</dt><dd>mnp-nucleo {escape(str(v.get('mnp_nucleo', '?')))}</dd></div>
 </dl>
@@ -316,11 +478,13 @@ def laudo_html(
 <section><h3>Escores (pontuação visual)</h3>{_tabela_resumo_html(r)}{_tabela_territorios_html(r)}
 <div class="laudo-tabela">{_tabela_segmentos_html(r, valores)}</div>
 <p class="laudo-nota">Escala: {escape(escala)}. Os escores são os marcados pelo médico; a captação (% do máximo do VE) vem do mapa polar e não tem banco de normalidade.</p></section>
+{_funcao_html(funcao, imagens_funcao)}
 {_gated_html(arquivos_info)}
 <section><h3>Método</h3>
 <p><strong>Reconstrução:</strong> retroprojeção filtrada. {escape(descrever_filtro(filtro, pixel_mm))} As duas convenções do corte (fração de Nyquist e ciclos/pixel) aparecem lado a lado porque cada fabricante usa uma (Germano, 2001). O padrão inicial da ferramenta (ordem 11, corte 0,45 Nyquist) é o melhor resultado num fantoma de VE com ⁹⁹ᵐTc citado por Lyra e Ploussi (2011).</p>
 <p><strong>Reorientação:</strong> eixo longo do VE traçado à mão num corte transaxial e depois no plano vertical que contém essa linha (Germano, 2001). Cortes exibidos no padrão de Cerqueira et al. (2002): eixo curto do ápice para a base, com anterior em cima e septo à esquerda; eixo longo vertical com o ápice à direita; eixo longo horizontal com o ápice em cima.</p>
-<p><strong>Mapa polar e segmentos:</strong> 17 segmentos e territórios coronarianos de Cerqueira et al. (2002), como na ASNC (2017) e na SBC (2020). <strong>Desvio declarado:</strong> a amostragem do miocárdio desta versão é própria (perfil de contagem máxima ao longo de raios a partir do eixo, com um centro apical a 30% do comprimento do eixo, limitado entre 10 e 40 mm), e não a do QPS (Germano et al., 2000), que depende da detecção automática das bordas do VE e será implementada na fase do gated.</p>
+<p><strong>Mapa polar e segmentos:</strong> 17 segmentos e territórios coronarianos de Cerqueira et al. (2002), como na ASNC (2017) e na SBC (2020). <strong>Desvio declarado:</strong> a amostragem do miocárdio desta versão é própria (perfil de contagem máxima ao longo de raios a partir do eixo, com um centro apical a 30% do comprimento do eixo, limitado entre 10 e 40 mm), e não a do QPS (Germano et al., 2000), que depende da detecção automática das bordas do VE.</p>
+{'<p><strong>Gated:</strong> cada intervalo reconstruído com o mesmo filtro e reorientado com o eixo do estudo. Bordas, volumes, motilidade e espessamento: implementação própria no estilo do QGS (Germano et al., 1995 e 1997), com espessura de 10 mm assumida na diástole final (ver as fórmulas abaixo). Não é o QGS e os números não são intercambiáveis com os de programas comerciais.</p>' if funcao else ''}
 </section>
 <section><h3>Fórmulas e critérios</h3><ul>{notas}</ul></section>
 <section><h3>Arquivos</h3><ul class="laudo-arquivos">{arquivos}</ul></section>

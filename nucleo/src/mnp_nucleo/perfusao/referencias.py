@@ -20,13 +20,24 @@ Cada número usado foi conferido no texto (PDFs enviados pelo Mourato em
 * Reorientação manual em duas etapas: Germano 2001, p. 1504 e figura 10.
 * Movimento ≥ 2 pixels: Germano 2001, p. 1506.
 * Janela R-R em torno de 20%: SBC 2020, p. 338.
+* Gated (17 nov 2026, metadados pelo PubMed): Germano 1995 (FE automática,
+  superfícies endo e epicárdica em todos os intervalos); Germano 1997
+  (motilidade pelo método da linha central modificado; espessamento por
+  geometria e por volume parcial); Abidov 2004 (TID automática); Mosteller
+  1987 (superfície corporal). Manual de referência do QGS/QPS (Cedars-Sinai,
+  enviado pelo Mourato): escalas dos mapas de 0–10 mm e 0–100%, escores de
+  motilidade 0–5 e espessamento 0–3, SMS e STS, curva de volume com
+  diástole final no primeiro ou último intervalo e sístole final perto do
+  terço do ciclo, e bordas pela conservação da massa com o aumento de
+  contagem do volume parcial.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 
-__all__ = ["Fonte", "BIBLIOGRAFIA", "SBC_2020", "ASNC_2017", "GERMANO_2001", "LYRA_2011", "CERQUEIRA_2002", "GERMANO_2000", "KAK_1988"]
+__all__ = ["Fonte", "BIBLIOGRAFIA", "SBC_2020", "ASNC_2017", "GERMANO_2001", "LYRA_2011", "CERQUEIRA_2002", "GERMANO_2000", "KAK_1988",
+           "GERMANO_1995", "GERMANO_1997", "ABIDOV_2004", "MOSTELLER_1987", "MANUAL_QGS", "BIBLIOGRAFIA_GATED"]
 
 
 @dataclass(frozen=True)
@@ -77,4 +88,38 @@ KAK_1988 = Fonte(
     None,
 )
 
+GERMANO_1995 = Fonte(
+    "Germano et al., 1995",
+    "Germano G, Kiat H, Kavanagh PB, et al. Automatic quantification of ejection fraction from gated myocardial "
+    "perfusion SPECT. J Nucl Med. 1995;36(11):2138-47 (método de referência; implementação própria no mesmo estilo).",
+    None,
+)
+GERMANO_1997 = Fonte(
+    "Germano et al., 1997",
+    "Germano G, Erel J, Lewin H, Kavanagh PB, Berman DS. Automatic quantitation of regional myocardial wall motion and "
+    "thickening from gated technetium-99m sestamibi myocardial perfusion single-photon emission computed tomography. "
+    "J Am Coll Cardiol. 1997;30(5):1360-7.",
+    "10.1016/s0735-1097(97)00276-3",
+)
+ABIDOV_2004 = Fonte(
+    "Abidov et al., 2004",
+    "Abidov A, Bax JJ, Hayes SW, et al. Integration of automatically measured transient ischemic dilation ratio into "
+    "interpretation of adenosine stress myocardial perfusion SPECT for detection of severe and extensive CAD. "
+    "J Nucl Med. 2004;45(12):1999-2007.",
+    None,
+)
+MOSTELLER_1987 = Fonte(
+    "Mosteller, 1987",
+    "Mosteller RD. Simplified calculation of body-surface area. N Engl J Med. 1987;317(17):1098.",
+    "10.1056/NEJM198710223171717",
+)
+MANUAL_QGS = Fonte(
+    "Manual do QGS/QPS",
+    "Cedars-Sinai Medical Center. QGS+QPS: manual de referência do usuário (escalas dos mapas de função, escores e "
+    "descrição geral do algoritmo).",
+    None,
+)
+
 BIBLIOGRAFIA = (SBC_2020, ASNC_2017, CERQUEIRA_2002, GERMANO_2001, LYRA_2011, KAK_1988, GERMANO_2000)
+#: Fontes da parte do gated (entram no laudo quando há gated).
+BIBLIOGRAFIA_GATED = (GERMANO_1995, GERMANO_1997, ABIDOV_2004, MOSTELLER_1987, MANUAL_QGS)

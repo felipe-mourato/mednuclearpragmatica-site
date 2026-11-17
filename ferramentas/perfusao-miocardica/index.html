@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Cintilografia de perfusão miocárdica · MedNuclear Pragmática</title>
-<meta name="description" content="SPECT de perfusão miocárdica a partir das projeções: controle de qualidade, reconstrução, eixos, cortes, mapa polar e escores. Processamento 100% local, no navegador.">
+<meta name="description" content="SPECT de perfusão miocárdica a partir das projeções: controle de qualidade, reconstrução, eixos, cortes, mapa polar, escores, FE, volumes, TID e motilidade no gated. Processamento 100% local, no navegador.">
 <!-- Fora dos buscadores enquanto a seção Ferramentas for rascunho.
      Ao ativar a seção (README, seção 6), troque por: index, follow -->
 <meta name="robots" content="noindex, nofollow">
@@ -38,7 +38,7 @@
   <header class="abertura">
     <p class="mnp-eyebrow">Ferramenta · <span class="radiofarmaco">⁹⁹ᵐTc-MIBI</span> ou <span class="radiofarmaco">⁹⁹ᵐTc-tetrofosmin</span> · SPECT</p>
     <h1>Cintilografia de perfusão miocárdica</h1>
-    <p class="fina">Das projeções ao laudo: controle de qualidade, reconstrução, eixos do VE, cortes de estresse e repouso, mapa polar e escores.</p>
+    <p class="fina">Das projeções ao laudo: controle de qualidade, reconstrução, eixos do VE, cortes de estresse e repouso, mapa polar e escores; no gated, FE, volumes, TID, malha do VE, motilidade e espessamento.</p>
   </header>
 
   <p class="mnp-aviso aviso-uso" role="note"><strong>Ferramenta de pesquisa e ensino, ainda não validada para uso clínico.</strong> Auxílio ao cálculo; a interpretação é de responsabilidade do médico nuclear. <strong>Processamento 100% local: nenhum dado sai do seu computador.</strong></p>
@@ -68,8 +68,9 @@
         <li><button type="button" data-passo="2"><span class="num">3</span>Reconstrução</button></li>
         <li><button type="button" data-passo="3"><span class="num">4</span>Eixos</button></li>
         <li><button type="button" data-passo="4"><span class="num">5</span>Cortes</button></li>
-        <li><button type="button" data-passo="5"><span class="num">6</span>Mapa polar e escores</button></li>
-        <li><button type="button" data-passo="6"><span class="num">7</span>Laudo</button></li>
+        <li><button type="button" data-passo="5"><span class="num">6</span>Função (gated)</button></li>
+        <li><button type="button" data-passo="6"><span class="num">7</span>Mapas polares e escores</button></li>
+        <li><button type="button" data-passo="7"><span class="num">8</span>Laudo</button></li>
       </ol>
     </nav>
 
@@ -205,19 +206,40 @@
       <div class="acoes">
         <button type="button" class="mnp-btn" data-ir="3">Voltar aos eixos</button>
         <p class="validacao" data-validacao="4"></p>
-        <button type="button" class="mnp-btn mnp-btn--principal" data-ir="5">Mapa polar e escores</button>
+        <button type="button" class="mnp-btn mnp-btn--principal" data-ir="5">Função ventricular</button>
       </div>
     </section>
 
-    <!-- Passo 6: polar e escores -->
-    <section class="passo" data-painel="5" aria-labelledby="t-passo-6" hidden>
-      <h2 id="t-passo-6">Mapa polar e escores</h2>
+    <!-- Passo 6: função (gated) -->
+    <section class="passo" data-painel="5" aria-labelledby="t-passo-func" hidden>
+      <h2 id="t-passo-func">Função ventricular (gated)</h2>
       <div class="instrucoes">
-        <p>Escolha o escore e clique nos segmentos do mapa (ou use as listas da tabela). Escala: 0 normal; 1 hipocaptação discreta; 2 moderada; 3 acentuada; 4 ausência de captação (SBC 2020; ASNC 2017). A pontuação é sua: a captação em % do máximo do VE ajuda a conferir, mas não há banco de normalidade.</p>
+        <p>Cada intervalo do gated é reconstruído com o mesmo filtro e cortado com o eixo do estudo (estresse ou repouso). A ferramenta acha a superfície mediomiocárdica, o plano valvar e as bordas do VE em cada intervalo, monta a curva de volume e calcula VDF, VSF e FE. A TID compara a cavidade do estresse e do repouso nas imagens não sincronizadas.</p>
+        <p class="nota">Implementação própria no estilo do QGS (Germano 1995 e 1997), com espessura de 10 mm assumida na diástole final: os números não são intercambiáveis com os de programas comerciais. Confira a malha: o endocárdio deve acompanhar a parede em todos os intervalos.</p>
       </div>
+      <div class="antropometria">
+        <label class="campo">Peso (kg) <input type="number" min="2" max="400" step="0.1" data-peso inputmode="decimal"></label>
+        <label class="campo">Altura (cm) <input type="number" min="40" max="250" step="1" data-altura inputmode="numeric"></label>
+        <p class="nota">Opcionais, para indexar os volumes pela superfície corporal (Mosteller). Digitados aqui; nunca lidos do DICOM.</p>
+      </div>
+      <p class="nota" data-status-funcao role="status" aria-live="polite"></p>
+      <div data-funcao></div>
+      <div data-avisos-funcao></div>
+      <div class="acoes">
+        <button type="button" class="mnp-btn" data-ir="4">Voltar aos cortes</button>
+        <p class="validacao" data-validacao="5"></p>
+        <button type="button" class="mnp-btn mnp-btn--principal" data-ir="6">Mapas polares e escores</button>
+      </div>
+    </section>
+
+    <!-- Passo 7: mapas polares e escores (perfusão, motilidade, espessamento) -->
+    <section class="passo" data-painel="6" aria-labelledby="t-passo-6" hidden>
+      <h2 id="t-passo-6">Mapas polares e escores</h2>
+      <div class="abas abas-mapa" role="tablist" aria-label="O que pontuar" data-abas-mapa></div>
+      <div class="instrucoes"><p data-instrucao-mapa></p></div>
       <div class="pincel" role="radiogroup" aria-label="Escore a aplicar" data-pincel></div>
       <details class="cortes-pontuar" open>
-        <summary>Cortes de estresse e repouso para pontuar</summary>
+        <summary data-titulo-cortes>Cortes de estresse e repouso para pontuar</summary>
         <div class="controles-cortes">
           <span class="alternar" role="group" aria-label="Escala de cor dos cortes">
             <button type="button" data-mapa="quente">Quente</button>
@@ -226,25 +248,29 @@
             <button type="button" data-mapa="invertida">Cinza invertida</button>
           </span>
         </div>
+        <div class="cine-gated" data-cine-gated hidden>
+          <button type="button" class="mnp-btn mnp-btn--pequeno" data-acao="cine-gated" aria-pressed="false">Pausar</button>
+          <label class="campo">Intervalo <input type="range" min="0" max="7" step="1" value="0" data-intervalo-gated> <span data-intervalo-gated-texto></span></label>
+        </div>
         <div data-cortes-polar></div>
       </details>
       <span class="alternar" role="group" aria-label="O que escrever no mapa">
         <button type="button" data-rotulos="escores" aria-pressed="true">Escores</button>
-        <button type="button" data-rotulos="captacao" aria-pressed="false">Captação (%)</button>
+        <button type="button" data-rotulos="captacao" aria-pressed="false" data-rotulo-valores>Captação (%)</button>
       </span>
       <div class="polares" data-polares></div>
       <div class="resumo-escores" data-resumo></div>
       <div class="tabela-rolagem"><table class="resultados tabela-segmentos" data-tabela-segmentos></table></div>
       <div data-avisos-5></div>
       <div class="acoes">
-        <button type="button" class="mnp-btn" data-ir="4">Voltar</button>
-        <p class="validacao" data-validacao="5"></p>
-        <button type="button" class="mnp-btn mnp-btn--principal" data-ir="6">Montar o laudo</button>
+        <button type="button" class="mnp-btn" data-ir="5">Voltar</button>
+        <p class="validacao" data-validacao="6"></p>
+        <button type="button" class="mnp-btn mnp-btn--principal" data-ir="7">Montar o laudo</button>
       </div>
     </section>
 
-    <!-- Passo 7: laudo -->
-    <section class="passo" data-painel="6" aria-labelledby="t-passo-7" hidden>
+    <!-- Passo 8: laudo -->
+    <section class="passo" data-painel="7" aria-labelledby="t-passo-7" hidden>
       <h2 id="t-passo-7">Laudo</h2>
       <div class="cabecalho-laudo">
         <label class="campo campo-largo">Paciente <input type="text" data-paciente maxlength="120" autocomplete="off"></label>
@@ -266,7 +292,7 @@
         <div class="laudo-previa" data-laudo></div>
       </section>
       <div class="acoes">
-        <button type="button" class="mnp-btn" data-ir="5">Voltar</button>
+        <button type="button" class="mnp-btn" data-ir="6">Voltar</button>
       </div>
     </section>
   </section>

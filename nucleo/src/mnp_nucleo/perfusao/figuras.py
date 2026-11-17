@@ -127,10 +127,11 @@ def _escrever(rgb: np.ndarray, texto: str, cx: float, cy: float, escala: int = 2
                     rgb[y0 + r * escala : y0 + (r + 1) * escala, x0 + (k * 6 + c) * escala : x0 + (k * 6 + c + 1) * escala] = (255, 255, 255)
 
 
-def polar_rgba(mapa_img: np.ndarray, rho_apice: float, mapa: str = "quente", escores: dict | None = None, lado: int | None = None) -> np.ndarray:
-    """Mapa polar colorido (0–100%), com as bordas dos 17 segmentos e, se dados, os escores escritos."""
+def polar_rgba(mapa_img: np.ndarray, rho_apice: float, mapa: str = "quente", escores: dict | None = None, lado: int | None = None,
+               teto: float = 100.0) -> np.ndarray:
+    """Mapa polar colorido (0 a ``teto``; perfusão em %, motilidade em mm), com as bordas dos 17 segmentos e, se dados, os escores escritos."""
     lado = lado or mapa_img.shape[0]
-    rgb = colorir(mapa_img, 100.0, mapa).copy()
+    rgb = colorir(mapa_img, teto, mapa).copy()
     m = (lado - 1) / 2.0
     yy, xx = np.mgrid[0:lado, 0:lado]
     x = (xx - m) / (m + 0.5)

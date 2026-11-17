@@ -18,7 +18,7 @@ Núcleo de processamento das ferramentas de medicina nuclear da [MedNuclear Prag
 | `mnp_nucleo.comum.png` | Codificador PNG sem dependências (figuras do laudo) |
 | `mnp_nucleo.gastrico` | Esvaziamento gástrico: segmentação proximal/distal, cálculos, sessão, laudo, lote |
 | `mnp_nucleo.dmsa` | Cintilografia renal com DMSA: incidências, fundo perirrenal, função relativa, figuras, sessão, laudo, lote |
-| `mnp_nucleo.perfusao` | Perfusão miocárdica (SPECT): projeções NM, controle de qualidade, FBP com Butterworth, eixos, cortes, mapa polar, escores, sessão, laudo, lote |
+| `mnp_nucleo.perfusao` | Perfusão miocárdica (SPECT): projeções NM, controle de qualidade, FBP com Butterworth, eixos, cortes, mapa polar, escores; gated com bordas do VE, FE, volumes, TID, motilidade e espessamento; sessão, laudo, lote |
 | `mnp_nucleo.fantomas` | DICOMs sintéticos com contagens conhecidas (inclusive projeções de SPECT) |
 
 Cada função de cálculo traz na docstring a fórmula e a referência.
@@ -47,7 +47,7 @@ Para o DMSA, o mesmo com `mnp-dmsa` (ou `python -m mnp_nucleo.dmsa`); o protocol
 mnp-dmsa protocolo.json --pasta pasta-dos-dicoms/ --csv resultado.csv --laudo laudo.html
 ```
 
-Para a perfusão miocárdica, `mnp-perfusao` (ou `python -m mnp_nucleo.perfusao`): o protocolo guarda os arquivos, o filtro, os eixos (em mm) e os escores; o lote reconstrói, reorienta e recalcula o mapa polar e os escores:
+Para a perfusão miocárdica, `mnp-perfusao` (ou `python -m mnp_nucleo.perfusao`): o protocolo guarda os arquivos, o filtro, os eixos (em mm) e os escores (perfusão, motilidade e espessamento); o lote reconstrói, reorienta e recalcula o mapa polar, os escores e, se houver gated, FE, volumes e TID:
 
 ```
 mnp-perfusao protocolo.json --pasta pasta-dos-dicoms/ --csv resultado.csv --laudo laudo.html
